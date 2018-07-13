@@ -1,0 +1,27 @@
+{
+  "name": "pinguo/php-context",
+  "description": "pinguo PHP Context",
+  "license": "GPL",
+  "type": "library",
+  "support": {
+    "issues": "https://github.com/pinguo/context/issues?state=open",
+    "wiki": "https://github.com/pinguo/context/wiki",
+    "source": "https://github.com/pinguo/context"
+  },
+  "require": {
+    "php": ">=7.0",
+    "pinguo/php-log": "1.0.1"
+  },
+  "autoload": {
+    "psr-4": {
+      "PG\\Context\\": "src"
+    }
+  },
+  "minimum-stability": "dev",
+  "prefer-stable": true,
+  "extra": {
+  },
+  "config": {
+    "secure-http": false
+  }
+}

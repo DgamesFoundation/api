@@ -1,0 +1,24 @@
+{
+  "name": "pinguo/php-aop",
+  "description": "pinguo PHP AOP",
+  "license": "GPL",
+  "type": "library",
+  "homepage": "https://github.com/pinguo/php-aop",
+  "require": {
+    "php": ">=7.0"
+  },
+  "repositories": {
+  },
+  "autoload": {
+    "psr-4": {
+      "PG\\AOP\\": "src/"
+    }
+  },
+  "minimum-stability": "dev",
+  "prefer-stable": true,
+  "extra": {
+  },
+  "config": {
+    "secure-http": false
+  }
+}

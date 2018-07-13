@@ -1,0 +1,25 @@
+{
+    "name": "pinguo/php-log",
+    "description": "Pinguo PHP log",
+    "license": "GPL",
+    "type": "library",
+    "support": {
+        "issues": "https://github.com/pinguo/php-log/issues?state=open",
+        "wiki": "https://github.com/pinguo/php-log/wiki",
+        "source": "https://github.com/pinguo/php-log"
+    },
+    "require": {
+        "php": ">=7.0",
+        "monolog/monolog": "2.0.x-dev"
+    },
+    "autoload": {
+        "psr-4": {
+            "PG\\Log\\": "src"
+        }
+    },
+    "minimum-stability": "dev",
+    "prefer-stable": true,
+    "config": {
+        "secure-http": false
+    }
+}

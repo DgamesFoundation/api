@@ -1,0 +1,26 @@
+{
+  "name": "pinguo/php-i18n",
+  "description": "Pinguo PHP i18n lib",
+  "license": "GPL",
+  "type": "library",
+  "support": {
+    "issues": "https://github.com/pinguo/php-i18n/issues?state=open",
+    "wiki": "https://github.com/pinguo/php-i18n/wiki",
+    "source": "https://github.com/pinguo/php-i18n"
+  },
+  "require": {
+    "php": ">=7.0"
+  },
+  "autoload": {
+    "psr-4": {
+      "PG\\I18N\\": "src"
+    }
+  },
+  "minimum-stability": "dev",
+  "prefer-stable": true,
+  "extra": {
+  },
+  "config": {
+    "secure-http": false
+  }
+}
