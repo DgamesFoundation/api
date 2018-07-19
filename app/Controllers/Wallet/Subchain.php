@@ -10,6 +10,7 @@ namespace App\Controllers\Wallet;
 
 use App\Models\Wallet\SubchainModel;
 use App\Models\Wallet\DgasModel;
+use App\Models\Wallet\ApplicationModel;
 use App\Controllers\Common\BaseController;
 
 class Subchain extends BaseController
@@ -39,27 +40,25 @@ class Subchain extends BaseController
 
         $this->log('dgas2subchain',$para,'接收参数');
         /*====================  接受加密参数  =========================*/
-//        $para=json_decode($this->getContext()->getInput()->getRawContent(),true);
-        $params=yield $this->checkParamsExists($para,['appid','fromaddr','toaddr','dgas']);
+        $params = yield $this->checkParamsExists($para,['appid','fromaddr','toaddr','dgas']);
         if(!$params){
-            $this->resMsg='参数异常';
-            $this->resCode=1;
+            $this->resMsg = '参数异常';
+            $this->resCode = 1;
             $this->encryptOutput($key2,$iv,403);return;
         }
-        $subchainMod=$this->getObject(SubchainModel::class);
-        $subchain_ratio=yield $subchainMod->getRedio($para['appid']);
-        $para['subchain']=$para['dgas']*$subchain_ratio;
+        $subchainMod = $this->getObject(SubchainModel::class);
+        $subchain_ratio = yield $subchainMod->getRedio($para['appid']);
+        $para['subchain'] = $para['dgas']*$subchain_ratio;
         //计算手续费
         $sc_arr = ['appid' => strlen($para['appid']),
             'fromaddr' => strlen($para['fromaddr']),
             'address' => strlen($para['toaddr']),
             'remark'=>'',
-            'dgas' => strlen($para['dgas']),
-            'subchain'=>strlen($para['subchain'])];
-        $charge=array_sum($sc_arr);
-        $sc_radio=getInstance()->config->get('ServerCharge',0.0001);
-        $para['Scharge']=bcmul($charge,$sc_radio, 5);
-        $dgasMod=$this->getObject(DgasModel::class);
+            'dgas' => strlen($para['dgas'])];
+        $charge = array_sum($sc_arr);
+        $sc_radio = getInstance()->config->get('ServerCharge',0.0001);
+        $para['Scharge'] = bcmul($charge,$sc_radio, 5);
+        $dgasMod = $this->getObject(DgasModel::class);
         //事务开始
         $trans = yield $this->masterDb->goBegin();
         //扣手续费
@@ -75,38 +74,176 @@ class Subchain extends BaseController
             'fromaddr' => $para['fromaddr'],
             'toaddr' => $para['toaddr'],
             'dgas' => $para['dgas'],
-            'subchain'=>$para['subchain'],
-            'ratio'=>$subchain_ratio,
-            'Scharge'=>$para['Scharge']];
-        $d2s_res=yield $subchainMod->AddDgas2subchain($d2s,$trans);
+            'subchain'=> $para['subchain'],
+            'ratio'=> $subchain_ratio,
+            'Scharge'=> $para['Scharge']];
+        $d2s_res = yield $subchainMod->AddDgas2subchain($d2s,$trans);
         $this->log('dgas2subchain',$d2s_res,'订单插入');
         if(!$d2s_res['status']){
             yield $this->masterDb->goRollback($trans);
-            $this->resCode=1;
-            $this->resMsg='操作失败';
+            $this->resCode = 1;
+            $this->resMsg = '操作失败';
             $this->encryptOutput($key2,$iv,200);return;
         }
-        $this->resMsg='操作成功';
-        $this->data=['order'=>$d2s_res['data']['order']];
+        $this->resMsg = '操作成功';
+        $this->data = ['order'=>$d2s_res['data']['order']];
         //插入日志
         yield $dgasMod->AddLog_Dgas2s($para,$d2s_res['data']['id']);
         yield $this->masterDb->goCommit($trans);
 
-        $subData=['dgas' => $para['dgas'],
-            'amount'=>$para['subchain'],
-            'faddress'=>$para['fromaddr'],
+        $subData = ['dgas' => $para['dgas'],
+            'amount' => $para['subchain'],
+            'faddress' => $para['fromaddr'],
             'taddress'=>$para['toaddr'],
             'out_trade_no'=>$d2s_res['data']['order'],
             'create_time'=>time(),
             'update_time'=>time(),
             'type'=>1];
         var_dump($subData);
-        $result=yield $this->SubRechargeLimit3($subData,$para['appid']);
+        $result = yield $this->SubRechargeLimit3($subData,$para['appid']);
         $this->encryptOutput($key2,$iv,200);
     }
 
-    //子链充值-dgas（优化前）
-    public function actionAddDgasAccount2(){
+    /**子链充值（dgame）Dgame2subchain
+     * @return \Generator|void
+     */
+    public  function actionAddDgameAccount(){
+        /*====================  接受加密参数 =========================*/
+        $code = $this->getContext()->getInput()->post('code'); // Encrypt userinfo
+        $sign = $this->getContext()->getInput()->post('sign'); // key1
+
+        $key2 = yield $this->checkKeycode($sign);
+        $iv   = strrev($key2);
+        $reqstr = openssl_decrypt(base64_decode($code), 'aes-128-cbc', $key2, true, $iv);
+        $para = json_decode($reqstr,true);
+        /*====================  接受加密参数  =========================*/
+        $this->log('dgame2subchain',[$code,$sign],'接收参数');
+        $params=$this->checkParamsExists($para,['appid','fromaddr','addr','toaddr','dgame','txid']);
+        if(!$params){
+            $this->resCode = 1;
+            $this->resMsg = "参数异常";
+            $this->encryptOutput($key2,$iv,403);return;
+        }
+        /*=========================  参数异常   ===================================*/
+        $subRatio = yield $this->getObject(SubchainModel::class)
+            ->getRedio($para['appid']); //子链比例
+        $dgas=getInstance()->config->get('dgas.ratio',100000);
+        $para['subchain']=$para['subchain']=bcmul(bcmul($para['dgame'],$dgas,10),$subRatio,10);
+        //计算手续费
+        $sc_arr = ['appid' => strlen($para['appid']),
+            'fromaddr' => strlen($para['fromaddr']),
+            'address' => strlen($para['addr']),
+            'remark'=>strlen(''),
+            'dgame' => strlen($para['dgame'])];
+        $charge=array_sum($sc_arr);
+        $sc_radio=getInstance()->config->get('ServerCharge',0.0001);
+        $para['Scharge']=bcmul($charge,$sc_radio, 5);
+        $dgasMod=$this->getObject(DgasModel::class);
+        //事务开始
+        $trans = yield $this->masterDb->goBegin();
+        //扣手续费
+        $conArr=$para;
+        $conArr['fromaddr']=$para['addr'];
+        $consume_rel= yield $dgasMod->consumeDgas_new($conArr,$trans,true);
+        $this->log('dgame2subchain',$consume_rel,'扣手续费');
+        if(!$consume_rel['status']){
+            yield $this->masterDb->goRollback($trans);
+            $this->resCode=1;
+            $this->resMsg=$consume_rel['mes'];
+//            $this->interOutputJson(403);return;
+            var_dump("扣手续费lose");
+            $this->encryptOutput($key2,$iv,200);return;
+        }
+        /*=========================  余额不足&扣费失败   ===================================*/
+        //插入订单
+        $result=yield $this->AddOrders_Dgame2Sub($para,$trans);
+        $this->log('dgame2subchain',$result,'插入订单');
+        if(!($result['d2s']['status'] && $result['d2d']['status'] && $result['sub']['status'])){
+            yield $this->masterDb->goRollback($trans);
+            $this->resCode=1;
+            $this->resMsg='操作失败';
+            var_dump("操作失败");
+            $this->encryptOutput($key2,$iv,200);return;
+        }
+        /*=========================  插入订单失败   ===================================*/
+        //插入日志
+        $ids=['sub'=>$result['sub']['data']['id'],
+            'd2d'=>$result['d2d']['data']['id'],
+            'd2s'=>$result['d2s']['data']['id']];
+        yield $dgasMod->AddLog_Dgame2s($para,$ids);
+        yield $this->masterDb->goCommit($trans);
+        //申请转子链
+        $subData=['dgas' => $para['dgame']*$dgas,
+            'amount'=> $para['subchain'],
+            'faddress'=>$para['fromaddr'],
+            'taddress'=>$para['address'],
+            'out_trade_no'=>$result['sub']['data']['order'],
+            'create_time'=>time(),
+            'update_time'=>time(),
+            'type'=>0];
+        $res=yield $this->SubRechargeLimit3($subData,$para['appid']);
+        var_dump($res);
+//        //获得订单编号
+        $this->resMsg='操作成功';
+        $this->data=['order'=>$result['sub']['data']['order']];
+        $this->encryptOutput($key2,$iv,200);
+
+    }
+
+    /**生成dgame转subchain需要生成的订单
+     * @param $para
+     * @param $trans
+     * @return array
+     */
+    public function AddOrders_Dgame2Sub($para,$trans){
+        $subchainMod = $this->getObject(SubchainModel::class);
+        $subRatio = yield $subchainMod->getRedio($para['appid']); //子链比例
+        //插入dgame2subchain
+        $subArr=['appid'=>$para['appid'],
+            'fromaddr'=>$para['fromaddr'],
+            'address'=>$para['addr'],
+            'toaddr'=>$para['toaddr'],
+            'txid'=>$para['txid'],
+            'dgame'=>$para['dgame'],
+            'subchain'=>$para['subchain'],
+            'Scharge'=>$para['Scharge'],
+            'ratio'=>$subRatio];
+        $this->log('dgame2subchain',$subArr,'$subArr');
+        $sub=yield $subchainMod->AddDgame2subchain($subArr,$trans);
+        //插入dgame2dgas
+        $dgas=getInstance()->config->get('dgas.ratio',100000);
+        $d2dArr=['appid' => $para['appid'],
+            'fromaddr' => $para['fromaddr'],
+            'toaddr' => $para['addr'],
+            'dgame' => $para['dgame'],
+            'txid' => $para['txid'],
+            'address' => $para['addr'],
+            'dgas'=>bcmul($para['dgame'],$dgas,10),
+            'ratio'=>$dgas,
+            'Scharge'=>$para['Scharge'],
+            'order_sn'=>$sub['data']['order']];
+        $this->log('dgame2subchain',$d2dArr,'d2dArr');
+        $dgasMod=$this->getObject(DgasModel::class);
+        $d2d=yield $dgasMod->AddDgame2Dgas($d2dArr,$trans);
+        //插入dgas2subchain
+        $d2sArr=['appid' => $para['appid'],
+            'fromaddr' => $para['fromaddr'],
+            'toaddr' => $para['addr'],
+            'dgas' => $d2dArr['dgas'],
+            'subchain'=>$para['subchain'],
+            'ratio'=>$subRatio,
+            'Scharge'=>$para['Scharge'],
+            'order_sn'=>$sub['data']['order']];
+        $this->log('dgame2subchain',$d2dArr,'$d2dArr');
+        $d2s=yield $subchainMod->AddDgas2subchain($d2sArr,$trans);
+        return ['sub'=>$sub,'d2d'=>$d2d,'d2s'=>$d2s];
+    }
+
+    /**
+     * Subchain2subchain生成订单
+     * @return \Generator|void
+     */
+    public function actionAddS2S(){
         //生成subchain充值订单（dgas2subchain）
         /*====================  接受加密参数 =========================*/
         $code = $this->getContext()->getInput()->post('code'); // Encrypt userinfo
@@ -116,298 +253,93 @@ class Subchain extends BaseController
         $iv   = strrev($key2);
         $reqstr = openssl_decrypt(base64_decode($code), 'aes-128-cbc', $key2, true, $iv);
         $para = json_decode($reqstr,true);
-
-        /*=================日志BEGAIN===================*/
-        $content=[PHP_EOL.'接收参1111数'.date("Y-m-d H:i:s",time()).PHP_EOL.var_export($para,TRUE).PHP_EOL];
-        file_put_contents("/tmp/dgas2subchain",$content,FILE_APPEND);
-        /*=================日志END===================*/
-        $this->log('dgas2subchain',$code,'未加密code');
-        $this->log('dgas2subchain',$sign,'密钥');
-
-//        var_dump($reqstr);
         /*====================  接受加密参数  =========================*/
-        //$para=json_decode($this->getContext()->getInput()->getRawContent(),true);
-        $para['subchain']=$para['dgas']*($this->getRedio($para['appid']));
-
-//        var_dump('dgas2sub传值',$para);
+//        $para=json_decode($this->getContext()->getInput()->getRawContent(),true);
+        $params=yield $this->checkParamsExists($para,['appid','fromaddr','toaddr','subchain']);
+        if(!$params){
+            $this->resCode = 1;
+            $this->resMsg = "参数异常";
+            $this->encryptOutput(403);return;
+        }
         //计算手续费
-        $sc_para = ['appid'=>$para['appid'],
+        $sc_arr = ['appid' => strlen($para['appid']),
+            'fromaddr' => strlen($para['fromaddr']),
+            'tooaddr' => strlen($para['toaddr']),
+            'remark'=>strlen(''),
+            'subchain' => strlen($para['subchain'])];
+        $charge=array_sum($sc_arr);
+        $sc_radio=getInstance()->config->get('ServerCharge',0.0001);
+        $para['Scharge']=bcmul($charge,$sc_radio, 5);
+
+        //事务开始--
+        $trans = yield $this->masterDb->goBegin();
+        //扣手续费
+        $consume_rel=yield $this->getObject(DgasModel::class)
+            ->consumeDgas_new($para,$trans,true,true);
+        if(!$consume_rel['status']){
+            yield $this->masterDb->goRollback($trans);
+            $this->resCode=1;
+            $this->resMsg=$consume_rel['mes'];
+            $this->encryptOutput(200);return;
+        }
+        //插入订单
+        $txid=$this->guid();
+        $s2s = ['appid'=>$para['appid'],
             'fromaddr'=>$para['fromaddr'],
             'toaddr'=>$para['toaddr'],
-            'remark'=>'',
-            'num'=>$para['subchain'],
-            '2num'=>$para['dgas']];
-        $para['Scharge']=$this->CalSCharge($sc_para);
-        //判断（手续费+dgas是否大于用户余额）
-        $balance=yield $this->masterDb->select('dgas')->from('account')
-            ->where('appid', $para['appid'])
-            ->andwhere('address',$para['fromaddr'])->go();
-       var_dump('判断'.$para['fromaddr'].'余额',$balance);
-       var_dump('要扣的手续费',$balance);
-        if($balance && $balance['result'][0]['dgas']<( $para['Scharge']+$para['dgas'])){
-            $this->resCode = 1;
-            $this->resMsg='余额不足';
-            var_dump('-------------------------'.$this->resMsg.'----------------------');
-            var_dump("余额不足",( $para['Scharge']+$para['dgas']));
-
-            /*=================日志BEGAIN===================*/
-            $content=[PHP_EOL.'判断余额'.date("Y-m-d H:i:s",time()).PHP_EOL. ($balance['result'][0]['dgas']<( $para['Scharge']+$para['dgas'])) .PHP_EOL];
-            file_put_contents("/tmp/dgas2subchain",$content,FILE_APPEND);
-            /*=================日志END===================*/
-            $this->encryptOutput($key2,$iv,200);
-            return;
-        }
-        //事务开始--
-        $trans = yield $this->masterDb->goBegin();
-        $res= yield $this->dgas2subchain_new($para,$trans);
-        if(!$res['status']){
-            yield $this->masterDb->goRollback($trans);
-            $this->resCode = 1;
-            $this->resMsg=$res['mes'];
-
-            /*=================日志BEGAIN===================*/
-            $content=[PHP_EOL.'操作失败'.date("Y-m-d H:i:s",time()).PHP_EOL.var_export($res,TRUE).PHP_EOL];
-            file_put_contents("/tmp/dgas2subchain",$content,FILE_APPEND);
-            /*=================日志END===================*/
-
-            $this->encryptOutput($key2,$iv,200);
-            return;
-        }
-        yield $this->masterDb->goCommit($trans);
-//        $order_sn  = yield $this->masterDb->select("order_sn")->from('dgas2subchain')->where('id',$res['data']['insert_id'])->go();
-        //0=>'dgame2subchain',1=>'dgas2subchain',2=>'dgame2dgas'
-        $subData=['dgas' => $para['dgas'],
-            'amount'=>$para['subchain'],
-            'faddress'=>$para['fromaddr'],
-            'taddress'=>$para['toaddr'],
-            'out_trade_no'=>$res['data']['order'],
+            'subchain'=>$para['subchain'],
+            'txid'=>$txid,
+            'status'=>0,
             'create_time'=>time(),
-            'update_time'=>time(),
-            'type'=>1];
-        var_dump($subData);
-        $result=yield $this->SubRechargeLimit3($subData,$para['appid']);
-
-        /*=================日志BEGAIN===================*/
-        $content=[PHP_EOL.'提交'.date("Y-m-d H:i:s",time()).PHP_EOL.var_export($result,TRUE).PHP_EOL];
-        file_put_contents("/tmp/dgas2subchain",$content,FILE_APPEND);
-        /*=================日志END===================*/
-
-        $this->resMsg=$res['mes'];
-        var_dump('-------------------------'.$this->resMsg.'----------------------');
-        $this->data=['order'=>$res['data']['order']];
+            'update_time'=>time()];
+        $res= yield  $this->getObject(SubchainModel::class)->Inserts2s($s2s,$trans);
+        if(!$res){
+            $this->resCode=1;
+            $this->resMsg='操作失败';
+            yield $this->masterDb->goRollback($trans);
+            $this->encryptOutput(200);return;
+        }
+        //添加gas_log
+        yield $this->AddGas_s2s_log($para,$res['id']);
+        //事务结束--
+        yield $this->masterDb->goCommit($trans);
+        $this->resCode=0;
+        $this->data=['orderid'=>$txid];
+        $this->resMsg='操作成功';
         $this->encryptOutput($key2,$iv,200);
+    }
 
+    /**
+     * 生成S2S   gas_log日志
+     * @param $para
+     * @param $id
+     * @return \Generator
+     */
+    public function AddGas_s2s_log($para,$id){
+        $swich_time=getInstance()->config->get('app2account_time','2018-07-10 00:00:00');
+        if(time()<strtotime($swich_time)){
+            $address=$this->getObject(ApplicationModel::class)
+                ->getDataByQuery('address',['appid'=>$para['appid']]);
+            $address=$address[0]['address'];
+        }else
+            $address=$para['fromaddr'];
+        $gas_log=['appid'=>$para['appid'],
+            'address'=>$address,
+            'exchange_id'=>$id,
+            'type'=>self::TRANSFER,
+            'flag'=>self::DGAS_CONSUME_SCHARGE,
+            'create_time'=>time()];
+        yield $this->getObject(DgasModel::class)
+            ->Insert_Gaslog([$gas_log]);
     }
 
 
 
-    //子链充值（dgame）
-    public  function actionAddDgameAccounts(){
-
-        /*====================  接受加密参数 =========================*/
-        $para = ["appid"=>"V431rSWOMpq3xGGJYSQTGH5oxlMBiXjJRw",
-            "fromaddr"=>"0x13dcab7acae2d03ab7b02958b089fd2131515bb5",
-            "toaddr"=>"0xf064b91a396bff8dac4848eccb20813b955b13fd",
-            "addr"=>"Vwy52IzENTSKebT94yIWG9_Wr8Iqyjh6Vw",
-            "dgame"=>"0.001",
-            "txid"=> "0xbb6525b9382f9652941455123be12b8230f0e1d5316b39f91dbb0cc89a085498",
-            "type"=>"1"];
-        $para['address'] = $para['addr'];
-        unset($para['addr']);
-        unset($para['type']);
-        /*====================  接受加密参数  =========================*/
-        //$param[type] 0 dgame2dgame 1 dgame2dgas 2 dgame2subchain
-        /*if(!(isset($para['appid']) && isset($para['address']) && isset($para['toaddr'])&& isset($para['txid'])&& isset($para['dgame']))){
-            $this->resCode = 1;
-            $this->resMsg = "参数异常";
-            $this->interOutputJson(403);return;
-        }*/
-
-        if(!(isset($para['appid']) && isset($para['address']) && isset($para['toaddr'])&& isset($para['txid'])&& isset($para['dgame']))){
-            $this->resCode = 1;
-            $this->resMsg = "参数异常";
-            $this->interOutputJson(200);return;
-           // $this->encryptOutput($key2,$iv,403);return;
-        }
-
-        $subRatio=$this->getRedio($para['appid']);                          //子链比例
-        $dgas=getInstance()->config->get('dgas.ratio',100000);
-
-        //生成subchain充值订单（dgame2subchain）
-        $subArr['subchain']=($para['dgame']*$dgas)*$subRatio;
-
-        //计算手续费
-        $sc_arr = ['num'=>$para['dgame'],
-            '2num'=>$subArr['subchain'],
-            'remark'=>''];
-        $sc_para=array_merge($para,$sc_arr);
-        $para['Scharge']=$this->CalSCharge($sc_para);
-        $subArr=$para;
-
-        //事务开始--
-        $trans = yield $this->masterDb->goBegin();
-        $sub= yield $this->dgame2subchain($subArr,$trans);
-var_dump('dgame2subchain',$sub);
-        if(!$sub['status']){
-            yield $this->masterDb->goRollback($trans);
-            $this->resCode = 1;
-            $this->resMsg = $sub['mes'];
-            $this->interOutputJson(200);
-//            $this->encryptOutput($key2,$iv,200);
-            return;
-        }
-var_dump('dgame2subchain------------------------');
-        //dgame2dgas---------
-        $d2dArr=$para;
-        $d2dArr['dgas']=$para['dgame']*$dgas;
-        $d2dArr['order_sn']=$sub['data']['order'];
-//        $d2dArr['address']=$d2dArr['address'];
-        $d2d= yield $this->dgame2dgas_old($d2dArr,$trans,1,$sub['data']['id']);
-        var_dump("dagme2subchainnew----------------------------------------");
-        if(!$d2d['status']){
-            yield $this->masterDb->goRollback($trans);
-            $this->resCode = 1;
-            $this->resStauts = $d2d['mes'];
-            $this->interOutputJson(200);
-//            $this->encryptOutput($key2,$iv,200);
-            return;
-        }
-
-        //dgas2subchain
-        $d2sArr=$para;
-        $d2sArr['dgas']=$d2dArr['dgas'];
-        $d2sArr['subchain']=$d2dArr['dgas']*$subRatio;
-        unset($d2sArr['dgame']);
-        $d2sArr['order_sn']=$sub['data']['order'];
-        $d2s= yield $this->dgas2subchain($d2sArr,$trans,1,false);
-        if(!$d2s['status']){
-            yield $this->masterDb->goRollback($trans);
-            $this->resCode = 1;
-            $this->resStauts = $d2s['mes'];
-            $this->interOutputJson(200);
-//            $this->encryptOutput($key2,$iv,200);
-            return;
-        }
-        yield $this->masterDb->goCommit($trans);
-
-        $subData=['dgas' => $d2sArr['dgas'],
-            'amount'=>$d2sArr['subchain'],
-            'faddress'=>$para['fromaddr'],
-            'taddress'=>$para['address'],
-            'out_trade_no'=>$sub['data']['order'],
-            'create_time'=>time(),
-            'update_time'=>time(),
-            'type'=>0];
-        var_dump($subData);
-        $result=yield $this->SubRechargeLimit3($subData,$para['appid']);
-
-//        //获得订单编号
-        $this->data=$sub['data'];
-       // $this->encryptOutput($key2,$iv,200);
-        $this->interOutputJson(200);
-
-    }
 
 
-    //子链充值（dgame）
-    public  function actionAddDgameAccount(){
 
-        /*====================  接受加密参数 =========================*/
-        $code = $this->getContext()->getInput()->post('code'); // Encrypt userinfo
-        $sign = $this->getContext()->getInput()->post('sign'); // key1
 
-        $key2 = yield $this->checkKeycode($sign);
-        $iv   = strrev($key2);
-        $reqstr = openssl_decrypt(base64_decode($code), 'aes-128-cbc', $key2, true, $iv);
-        $para = json_decode($reqstr,true);
-        $para['address'] = $para['addr'];
-        unset($para['addr']);
-        unset($para['type']);
-        /*====================  接受加密参数  =========================*/
 
-        //$param[type] 0 dgame2dgame 1 dgame2dgas 2 dgame2subchain
-        var_dump('AddDgameAccount:',$para);
-        if(!(isset($para['appid']) && isset($para['address']) && isset($para['toaddr'])&& isset($para['txid'])&& isset($para['dgame']))){
-            $this->resCode = 1;
-            $this->resMsg = "参数异常";
-            $this->encryptOutput($key2,$iv,403);return;
-        }
-
-        $subRatio=$this->getRedio($para['appid']);                          //子链比例
-        $dgas=getInstance()->config->get('dgas.ratio',100000);
-
-        //生成subchain充值订单（dgame2subchain）
-        $subArr['subchain']=($para['dgame']*$dgas)*$subRatio;
-
-        //计算手续费
-        $sc_arr = ['num'=>$para['dgame'],
-            '2num'=>$subArr['subchain'],
-            'remark'=>''];
-        $sc_para=array_merge($para,$sc_arr);
-        $para['Scharge']=$this->CalSCharge($sc_para);
-        $subArr=$para;
-
-        //事务开始--
-        $trans = yield $this->masterDb->goBegin();
-        $sub= yield $this->dgame2subchain($subArr,$trans);
-
-        if(!$sub['status']){
-            yield $this->masterDb->goRollback($trans);
-            $this->resCode = 1;
-            $this->resMsg = $sub['mes'];
-            $this->encryptOutput($key2,$iv,200);
-            return;
-        }
-
-        //dgame2dgas---------
-        $d2dArr=$para;
-        $d2dArr['dgas']=$para['dgame']*$dgas;
-        $d2dArr['order_sn']=$sub['data']['order'];
-//        $d2dArr['address']=$d2dArr['address'];
-        $d2d= yield $this->dgame2dgas_old($d2dArr,$trans,1,$sub['data']['id']);
-        var_dump("dagme2subchainnew----------------------------------------");
-        if(!$d2d['status']){
-            yield $this->masterDb->goRollback($trans);
-            $this->resCode = 1;
-            $this->resStauts = $d2d['mes'];
-            $this->encryptOutput($key2,$iv,200);
-            return;
-        }
-
-        //dgas2subchain
-        $d2sArr=$para;
-        $d2sArr['dgas']=$d2dArr['dgas'];
-        $d2sArr['subchain']=$d2dArr['dgas']*$subRatio;
-        unset($d2sArr['dgame']);
-        $d2sArr['order_sn']=$sub['data']['order'];
-        $d2s= yield $this->dgas2subchain($d2sArr,$trans,1,false);
-        if(!$d2s['status']){
-            yield $this->masterDb->goRollback($trans);
-            $this->resCode = 1;
-            $this->resStauts = $d2s['mes'];
-//            $this->interOutputJson(200);
-            $this->encryptOutput($key2,$iv,200);
-            return;
-        }
-        yield $this->masterDb->goCommit($trans);
-
-        $subData=['dgas' => $d2sArr['dgas'],
-            'amount'=>$d2sArr['subchain'],
-            'faddress'=>$para['fromaddr'],
-            'taddress'=>$para['address'],
-            'out_trade_no'=>$sub['data']['order'],
-            'create_time'=>time(),
-            'update_time'=>time(),
-            'type'=>0];
-        var_dump($subData);
-        $result=yield $this->SubRechargeLimit3($subData,$para['appid']);
-
-//        //获得订单编号
-        $this->data=$sub['data'];
-        $this->encryptOutput($key2,$iv,200);
-//        $this->interOutputJson(200);
-
-    }
 
     //子链交易列表
     public function actiongetSubchainList(){
@@ -469,47 +401,6 @@ var_dump('dgame2subchain------------------------');
         $rel['result'][0]['num']=$rel1['result'][0]['subchain'];
         $this->data = $rel ? $rel['result'][0] : null;
         $this->interOutputJson(200) ;
-    }
-//id	appid	txid	from	to	dgas	status	create_time	update_time
-    public function actionAddS2S(){
-        //生成subchain充值订单（dgas2subchain）
-        /*====================  接受加密参数 =========================*/
-        $code = $this->getContext()->getInput()->post('code'); // Encrypt userinfo
-        $sign = $this->getContext()->getInput()->post('sign'); // key1
-
-        $key2 = yield $this->checkKeycode($sign);
-        $iv   = strrev($key2);
-        $reqstr = openssl_decrypt(base64_decode($code), 'aes-128-cbc', $key2, true, $iv);
-        $para = json_decode($reqstr,true);
-        /*====================  接受加密参数  =========================*/
-        $this->log('subchain2subchain',$code,'未加密code');
-        $this->log('subchain2subchain',$sign,'密钥');
-//        var_dump($reqstr);
-        var_dump($para);
-        //$para=json_decode($this->getContext()->getInput()->getRawContent(),true);
-        if(!(isset($para['appid']) && isset($para['fromaddr']) && isset($para['toaddr'])&& isset($para['subchain']))){
-            $this->resCode = 1;
-            $this->resMsg = "参数异常";
-            $this->encryptOutput(403);
-        }
-        //$para1=json_decode($this->getContext()->getInput()->getAllPostGet(),true);
-        //事务开始--
-        $trans = yield $this->masterDb->goBegin();
-        $res= yield $this->adds2s($para,$trans);
-        if(!$res['status']){
-            yield $this->masterDb->goRollback($trans);
-            $this->resCode = 1;
-            $this->resMsg=$res['mes'];
-            $this->encryptOutput(200);
-        }
-        yield $this->masterDb->goCommit($trans);
-
-        //事务结束--
-        //获得订单编号
-        $order_sn  = yield $this->masterDb->select("txid")->from('subchain2subchain')->where('id',$res['data']['insert_id'])->go();
-        $this->resCode=0;
-        $this->data=['orderid'=>$order_sn['result'][0]['txid']];
-        $this->encryptOutput($key2,$iv,200);
     }
 
 

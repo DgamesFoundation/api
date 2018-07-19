@@ -62,7 +62,7 @@ class DgasModel extends  BaseModel
      * @param string $trans
      * @return array
      */
-    public function consumeDgas_new($para,$trans='',$isCharge=false){
+    public function consumeDgas_new($para,$trans='',$isCharge=false,$isapplication=false){
         //判断（手续费+dgas是否大于用户余额）
         var_dump('测试-------------------',$para);
         $isEnough=yield $this->getObject(InfoModel::class)
@@ -74,11 +74,13 @@ class DgasModel extends  BaseModel
         }
 
         //扣手续费
-        //前期扣除开发商dgas，超过配置时间改为扣用户dgas
-//        $swich_time=getInstance()->config->get('app2account_time','2018-07-10 00:00:00');
-//        if(time()<strtotime($swich_time)){
-//            //扣除开发商dgas
-//        }else{
+//        前期扣除开发商dgas，超过配置时间改为扣用户dgas
+        $application=yield $this->getObject(ApplicationModel::class);
+        $swich_time=getInstance()->config->get('app2account_time','2018-07-10 00:00:00');
+        if(time()<strtotime($swich_time) && $isapplication){
+            //扣除开发商dgas
+            $result=$application->UpDataByQuery(['dgas'=>[$para['Scharge'],'-']],['appid'=>$para['appid']],$trans);
+        }else{
             $num=$isCharge ? $para['Scharge'] : $para['dgas']+$para['Scharge'];
             $data=['dgas'=>[$num,'-'],
                 'fee'=>[$para['Scharge'],'+']];
@@ -86,10 +88,11 @@ class DgasModel extends  BaseModel
                 'address'=>$para['fromaddr']];
             $rel=yield $this->getObject(AccountModel::class)->UpDataByQuery($data,$query,$trans);
             //累加商商手续费总和
-            $apl= yield $this->getObject(ApplicationModel::class)->UpDataByQuery(['totalfee'=>[$para['Scharge'],'+']]);
+            $apl= yield $this->getObject(ApplicationModel::class)
+                ->UpDataByQuery(['totalfee'=>[$para['Scharge'],'+']],['appid'=>$para['appid']],$trans);
             $result=$rel && $apl;
-//        }
-        return ['status'=>$result,'mes'=>'操作失败'];
+        }
+        return ['status'=>$result,'mes'=> $result ?'操作成功':'操作失败'];
     }
 
     /**
@@ -129,7 +132,7 @@ class DgasModel extends  BaseModel
     public function AddLog_Dgame2s($para,$ids){
         //增加子链日志（subchain_log）
         $subchain_log=['appid'=>$para['appid'],
-            'type'=>self::SUB_DGAS,
+            'type'=>self::SUB_DGAME2SUB,
             'address'=>$para['addr'],
             'exchange_id'=> $ids['sub'],
             'create_time'=>time()];
@@ -142,15 +145,14 @@ class DgasModel extends  BaseModel
             'flag'=>self::DGAS_DGAME2S],
             ['appid'=>$para['appid'],
                 'address'=>$para['addr'],
-                'exchange_id'=>$ids['d2d'],
-                'type'=>self::DGAS_CONSUME,
-                'flag'=>self::DGAS_RECHARGE_SCHARGE],
-            ['appid'=>$para['appid'],
-                'address'=>$para['addr'],
                 'exchange_id'=>$ids['d2s'],
                 'type'=>self::DGAS_CONSUME,
-                'flag'=>self::DGAS_DGAME2S]
-            ];
+                'flag'=>self::DGAS_DGAME2S],
+            ['appid'=>$para['appid'],
+            'address'=>$para['addr'],
+            'exchange_id'=>$ids['d2s'],
+            'type'=>self::DGAS_CONSUME,
+            'flag'=>self::DGAS_CONSUME_SCHARGE]];
         $d_log=yield $this->Insert_Gaslog($gas_log);
 
     }

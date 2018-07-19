@@ -41,6 +41,14 @@ class SubchainModel extends  BaseModel
         $result=yield $result->go();
         return $result['result'];
     }
+    /**插入数据subchain2subchain
+     * @param $data
+     * @return bool
+     */
+    public function Inserts2s($data,$trans=''){
+        $res= yield  $this->masterDb->insert($this->s2s)->set($data)->go($trans);
+        return $res['affected_rows']>0 ? ['id'=>$res['insert_id']] : false;
+    }
 
     /**插入数据Dgas2subchain
      * @param $data

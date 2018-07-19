@@ -91,8 +91,8 @@ class Dgas extends BaseController
             $this->log("dgame2dgas",[],'参数异常');
             $this->encryptOutput($key2,$iv,403);return;
         }
-        $dgame_ratio=getInstance()->config->get('dgame.ratio',1);
-        $dgas=$para['dgame']*$dgame_ratio;
+        $dgas=getInstance()->config->get('dgas.ratio',100000);
+        $dgas=$para['dgame']*$dgas;
 
         //计算手续费
         $sc_arr = ['appid' => strlen($para['appid']),
@@ -112,7 +112,7 @@ class Dgas extends BaseController
             'txid' => $para['txid'],
             'address' => $para['addr'],
             'dgas'=>$dgas,
-            'ratio'=>$dgame_ratio,
+            'ratio'=>$dgas,
             'Scharge'=>$charge,
             'order_sn'=>$orderId,
             'status'=>0,
