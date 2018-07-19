@@ -3,8 +3,10 @@ namespace App\Console\Poa;
 
 use App\Console\Common\BaseController;
 use App\Models\Wallet\ApplicationModel;
+use App\Models\Wallet\DgasModel;
 use PG\MSF\Pools\Miner;
 use \PG\MSF\Client\Http\Client;
+use App\Models\Wallet\AccountModel;
 
 class Task extends BaseController
 {
@@ -22,52 +24,16 @@ class Task extends BaseController
         echo '命令行示例';
     }
 
-    //扣除或添加用户dgas
-    public function consumeDgas($para,$trans,$type='scharge'){
-        $balance=yield $this->masterDb->select('dgas,fee')->from('account')
-            ->where('appid', $para['appid'])
-            ->andwhere('address',$para['address'])->go();
-        $dgasfee= $para['up']=='-' ? $balance['result'][0]['dgas']-$para['num'] : $balance['result'][0]['dgas']+$para['num'];
-
-        var_dump("dgas feel",$balance);
-        var_dump("consumedgas",$para);
-        if($dgasfee<0)
-            return ['status'=>false,'mes'=>'余额不足'];
-        $fee= $balance['result'][0]['fee'];
-        if($type=='scharge')
-            $fee= $fee+$para['num'];
-        $data=array('dgas'=>$dgasfee,'fee'=>$fee);
-        $up= yield $this->masterDb->update('account')->set($data)
-            ->where('appid', $para['appid'])
-            ->andwhere('address',$para['address'])->go($trans);
-        if($type=='scharge'){
-            $aplication=$this->getObject(ApplicationModel::class);
-            //获得开发商累计手续费
-            $ap=yield $aplication->getParaByAppid($para['appid'],'totalfee');
-            $apfee=$ap[0]['totalfee']+$para['num'];
-            $data=['totalfee'=>$apfee];
-            $apUp=yield $aplication->UpByAppid($para['appid'],$data);
-        }
-        if($up['affected_rows']==0)
+    //添加用户dgas
+    public function consumeDgas($para){
+        $data=['dgas'=>[$para['num'],$para['up']]];
+        $query=['appid'=>$para['appid'],
+            'address'=>$para['address']];
+        $rel=yield $this->getObject(AccountModel::class)->UpDataByQuery($data,$query,'');
+        if($rel)
+            return ['status'=>true,'mes'=>'操作成功'];
+        else
             return ['status'=>false,'mes'=>'操作失败'];
-        return ['status'=>true,'mes'=>'操作成功'];
-    }
-    //生成gas_log批量插入
-    public function addGas_log_arr($para,$trans){
-        $data=$para['base'];
-        unset($para['base']);
-        $num=0;
-        foreach ($data as $k=>$v){
-            $data[$k]=array_merge($para,$v);
-            $data[$k]['create_time']=time();
-            $res1=yield  $this->masterDb->insert('gas_log')->set($data[$k])->go($trans);
-            if($res1['result'])
-                $num++;
-        }
-
-        if($num!=count($data))
-            return ['status'=>false,'mes'=>'操作失败'];
-        return ['status'=>true,'mes'=>'操作成功'];
     }
     /**
      * Dgame 充值 Dgas 处理任务
@@ -99,17 +65,17 @@ class Task extends BaseController
                     'num'=>$addDgas,
                     'up'=>'+',
                     'address'=>$address];            // 扣Dgas地址
-                $account=yield $this->consumeDgas($data,'','dgas');
+                $account=yield $this->consumeDgas($data);
 
                 //插入gas_log
                 $gas_log=['appid'=>$dr['appid'],
                     'address'=>$address,
-                    'exchange_id'=>$dr['id']];
-                $gas_log['base']=[['type'=>self::DGAS_RECHARGE,
-                    'flag'=>self::DGAS_NORMAL],
-                    ['type'=>self::DGAS_CONSUME,
-                        'flag'=>self::DGAS_CONSUME_SCHARGE]];
-                $gas_log=yield $this->addGas_log_arr($gas_log,'');
+                    'exchange_id'=>$dr['id'],
+                    'type'=>self::DGAS_RECHARGE,
+                    'flag'=>self::DGAS_NORMAL];
+                $this->getObject(DgasModel::class)
+                    ->Insert_Gaslog($gas_log);
+                //$gas_log=yield $this->addGas_log_arr($gas_log,'');
             }
         }
     }
