@@ -408,7 +408,10 @@ class Miner
     {
         if (is_array($column)) {
             foreach ($column as $columnName => $columnValue) {
-                $this->set($columnName, $columnValue, $quote, $opt);
+                if(is_array($columnValue)){
+                    $this->set($columnName,$columnValue[0],null,$columnValue[1]);
+                }else
+                    $this->set($columnName, $columnValue, $quote, $opt);
             }
         } else {
             $this->set[] = array(
@@ -937,6 +940,7 @@ class Miner
         } elseif ($this->isDelete()) {
             $statement = $this->getDeleteStatement($usePlaceholders);
         }
+//        var_dump('set UPdate测试',$statement);
         return $statement;
     }
 

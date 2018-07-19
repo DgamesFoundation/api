@@ -12,6 +12,24 @@ use PG\MSF\Models\Model;
 use PG\MSF\Coroutine\File;
 class BaseModel extends Model
 {
+    const DGAS_REWARD=0;
+    const DGAS_CONSUME=1;
+    const DGAS_RECHARGE=2;
+    const DGAS_CONSUME_SCHARGE=3;//兑换手续
+    const DGAS_RECHARGE_SCHARGE=2;//充值手续
+    const DGAS_NORMAL=0;//正常操作
+    const DGAS_S2S=4;
+    const DGAS_DGAME2S=1;
+
+    const SUB_DGAME=0;
+    const SUB_DGAS=1;
+    const SUB_DGAME2SUB=2;
+    const TRANSFER=3;//转帐
+
+    const  DGAS2SUBCHAIN='dgas2subchain';
+
+    const  SUCCESS=1;
+    const  FAIL=0;
     public $masterDb;
     public $slaveDb;
     public function __construct()
@@ -28,13 +46,11 @@ class BaseModel extends Model
             mt_srand((double)microtime()*10000);//optional for php 4.2.0 and up.
             $charid = strtoupper(md5(uniqid(rand(), true)));
             $hyphen = chr(45);// "-"
-            $uuid = chr(123)// "{"
-                .substr($charid, 0, 8).$hyphen
+            $uuid = substr($charid, 0, 8).$hyphen
                 .substr($charid, 8, 4).$hyphen
                 .substr($charid,12, 4).$hyphen
                 .substr($charid,16, 4).$hyphen
-                .substr($charid,20,12)
-                .chr(125);// "}"
+                .substr($charid,20,12);// "}"
             return $uuid;
         }
     }

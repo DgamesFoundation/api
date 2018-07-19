@@ -36,7 +36,7 @@ class Callback extends BaseController
         $info=$this->getObject(InfoModel::class);
          $aplication=$this->getObject(ApplicationModel::class);
          $rel=yield $info->getAppidByOrder($code['out_trade_no'],$this->tb[$code['type']]);
-         $data=yield $aplication->getDataByQuery('secretKey,account_len,White_list',['appid'=>$rel]);
+         $data=yield $aplication->getDataByQuery('secretKey,precisions,White_list',['appid'=>$rel]);
          //校验签名
          $rel=$info::checkSign($sign,$code,$data[0]['secretKey']);
          if(!$rel){
@@ -46,7 +46,7 @@ class Callback extends BaseController
            return;
          }
         //判断ip地址是否合法
-         $ips=unserialize($data[0]['White_list']);
+        $ips=explode(',',$data[0]['White_list']);
          $remote=$this->getContext()->getInput()->getRemoteAddr();
          if(!in_array($remote,$ips)){
              $this->resMsg='IP地址非法';
@@ -93,7 +93,7 @@ class Callback extends BaseController
             $rel[0]['address'];
         $mul_len=getInstance()->config->get('dgas.mul_num',1000000000000000000);
         $dgas=$this->calc($rel[0]['dgas'],$mul_len,'mul');
-        $amount=$this->calc($rel[0]['dgas']*$rel[0]['ratio'],$data[0]['account_len'],'mul');
+        $amount=$this->calc($rel[0]['dgas']*$rel[0]['ratio'],$data[0]['precisions'],'mul');
         var_dump($code['dgas'],$dgas,$code['dgas']==$dgas);
         var_dump($code['amount'],$amount,$code['amount']==$amount);
         return ($code['faddress'] == $rel[0]['fromaddr'] && $code['dgas']==$dgas && $code['taddress']==$address && $code['amount']==$amount)  ;

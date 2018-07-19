@@ -19,15 +19,38 @@ class AccountModel extends  BaseModel
     }
 
     /**
-     * 根据参数和appid返回相对应字段信息
-     * @param $arr 用户appid和address
-     * @param $para  要查询的字段
+     * 查询
+     * @param $para 需要查询的字段
+     * @param $query 查询条件
      * @return mixed
      */
-    public function getParaByData($arr,$para){
-        $balance=yield $this->masterDb->select($para)->from($this->table)
-            ->where('appid', $arr['appid'])
-            ->andwhere('address',$arr['address'])->go();
-        return $balance['result'];
+    public function getParaByData($para,$query){
+        $result=yield $this->masterDb->select($para)->from($this->table);
+        if($query){
+            foreach ($query as $k=>$v){
+                $result->where($k,$v);
+            }
+        }
+        $result=yield $result->go();
+        return $result['result'];
+    }
+
+    /**
+     * 根据条件更新数据
+     * @param $data
+     * @param string $query
+     * @param string $trans
+     * @return bool
+     */
+    public function UpDataByQuery($data,$query='',$trans=''){
+        $result= yield $this->masterDb->update($this->table)->set($data);
+        if($query) {
+            foreach ($query as $k => $v) {
+                $result->where($k, $v);
+            }
+        }
+        $result=yield $result->go($trans);
+        var_dump('account',$result);
+        return $result['affected_rows']>0;
     }
 }

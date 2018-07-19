@@ -58,4 +58,23 @@ class ApplicationModel extends  BaseModel
         $result=yield $result->go();
         return $result['result'];
     }
+
+    /**
+     * 根据条件更新数据
+     * @param $data
+     * @param string $query
+     * @param string $trans
+     * @return bool
+     */
+    public function UpDataByQuery($data,$query='',$trans=''){
+        $result= yield $this->masterDb->update($this->table)->set($data);
+        if($query) {
+            foreach ($query as $k => $v) {
+                $result->where($k, $v);
+            }
+        }
+        $result=yield $result->go($trans);
+        var_dump('application',$result);
+        return $result['affected_rows']>0;
+    }
 }

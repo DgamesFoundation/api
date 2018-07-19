@@ -39,7 +39,121 @@ class DgasModel extends  BaseModel
         $result=yield $result->go();
         return $result['result'];
     }
+    /**
+     * 批量插入gas_log
+     * @param $data
+     * @param string $trans
+     * @return bool
+     */
+    public function Insert_Gaslog($data,$trans=''){
+        $num=0;
+        foreach ($data as $k=>$v){
+            $data[$k]['create_time']=time();
+            $res1=yield  $this->masterDb->insert($this->log)->set($data[$k])->go($trans);
+            if($res1['result'])
+                $num++;
+        }
+        return $num!=count($data);
+    }
 
+    /**
+     * 扣除用户dgas&手续费
+     * @param $para
+     * @param string $trans
+     * @return array
+     */
+    public function consumeDgas_new($para,$trans='',$isCharge=false){
+        //判断（手续费+dgas是否大于用户余额）
+        var_dump('测试-------------------',$para);
+        $isEnough=yield $this->getObject(InfoModel::class)
+            ->balanceIsEnough(['appid'=>$para['appid'],'address'=>$para['fromaddr']],$para['Scharge']);
+       var_dump($isEnough);
+        if(!$isEnough){
+            $this->log('dgas2subchain',[$para['Scharge']+$para['dgas']],'余额不足');
+            return ['status'=>false,'msg'=>'余额不足'];
+        }
+
+        //扣手续费
+        //前期扣除开发商dgas，超过配置时间改为扣用户dgas
+//        $swich_time=getInstance()->config->get('app2account_time','2018-07-10 00:00:00');
+//        if(time()<strtotime($swich_time)){
+//            //扣除开发商dgas
+//        }else{
+            $num=$isCharge ? $para['Scharge'] : $para['dgas']+$para['Scharge'];
+            $data=['dgas'=>[$num,'-'],
+                'fee'=>[$para['Scharge'],'+']];
+            $query=['appid'=>$para['appid'],
+                'address'=>$para['fromaddr']];
+            $rel=yield $this->getObject(AccountModel::class)->UpDataByQuery($data,$query,$trans);
+            //累加商商手续费总和
+            $apl= yield $this->getObject(ApplicationModel::class)->UpDataByQuery(['totalfee'=>[$para['Scharge'],'+']]);
+            $result=$rel && $apl;
+//        }
+        return ['status'=>$result,'mes'=>'操作失败'];
+    }
+
+    /**
+     * 添加子链和gas日志 Dgas2subchain
+     * @param $para
+     * @param $id
+     */
+    public function AddLog_Dgas2s($para,$id){
+        //增加子链日志（subchain_log）
+        $subchain_log=['appid'=>$para['appid'],
+            'type'=>self::SUB_DGAS,
+            'address'=>$para['toaddr'],
+            'exchange_id'=> $id,
+            'create_time'=>time()];
+        $s_log=yield $this->getObject(SubchainModel::class)->InsertLog($subchain_log,'');
+//        增加gas_log
+        $gas_log=[['appid'=>$para['appid'],
+            'address'=>$para['fromaddr'],
+            'exchange_id'=>$id,
+            'type'=>self::DGAS_CONSUME,
+            'flag'=>self::DGAS_NORMAL],
+            ['appid'=>$para['appid'],
+                'address'=>$para['fromaddr'],
+                'exchange_id'=>$id,
+                'type'=>self::DGAS_CONSUME,
+                'flag'=>self::DGAS_CONSUME_SCHARGE]];
+        $d_log=yield $this->Insert_Gaslog($gas_log);
+
+    }
+
+
+    /**
+     * 添加子链和gas日志 Dgame2subchain
+     * @param $para
+     * @param $id
+     */
+    public function AddLog_Dgame2s($para,$ids){
+        //增加子链日志（subchain_log）
+        $subchain_log=['appid'=>$para['appid'],
+            'type'=>self::SUB_DGAS,
+            'address'=>$para['addr'],
+            'exchange_id'=> $ids['sub'],
+            'create_time'=>time()];
+        $s_log=yield $this->getObject(SubchainModel::class)->InsertLog($subchain_log,'');
+//        增加gas_log
+        $gas_log=[['appid'=>$para['appid'],
+            'address'=>$para['addr'],
+            'exchange_id'=>$ids['d2d'],
+            'type'=>self::DGAS_RECHARGE,
+            'flag'=>self::DGAS_DGAME2S],
+            ['appid'=>$para['appid'],
+                'address'=>$para['addr'],
+                'exchange_id'=>$ids['d2d'],
+                'type'=>self::DGAS_CONSUME,
+                'flag'=>self::DGAS_RECHARGE_SCHARGE],
+            ['appid'=>$para['appid'],
+                'address'=>$para['addr'],
+                'exchange_id'=>$ids['d2s'],
+                'type'=>self::DGAS_CONSUME,
+                'flag'=>self::DGAS_DGAME2S]
+            ];
+        $d_log=yield $this->Insert_Gaslog($gas_log);
+
+    }
 
 
 
@@ -74,6 +188,23 @@ class DgasModel extends  BaseModel
         if($num!=count($data))
             return false;
         return true;
+    }
+
+    /**
+     * Dgame2subchain订单
+     * @param $data
+     * @param $trans
+     * @return array
+     */
+    public function AddDgame2Dgas($data,$trans){
+        $orderId=isset($data['order_sn']) ? $data['order_sn'] :  $this->guid();
+        $d2s=['order_sn'=>$orderId,
+            'status'=>0,
+            'create_time'=>time(),
+            'update_time'=>time()];
+        $d2s=array_merge($data,$d2s);
+        $res= yield  $this->masterDb->insert($this->dgas)->set($d2s)->go($trans);
+        return $res['affected_rows']>0 ? ['status'=>true,'data'=>['order'=>$orderId,'id'=>$res['insert_id']]] : ['status'=>false];
     }
 
 

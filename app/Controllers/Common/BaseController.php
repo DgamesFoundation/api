@@ -50,6 +50,31 @@ class BaseController extends Controller
         $poa_flag = $this->getContext()->getInput()->getHeader('poa_flag');
         //var_dump($poa_flag);
         $this->masterDb = $this->getMysqlPool('master');
+        $para=$this->getContext()->getInput()->getAllPostGet();
+        yield $this->BeforAction($para);
+    }
+
+    public function BeforAction($para){
+        if(isset($para['code'])&& isset($para['sign'])){
+            $key2 = yield $this->checkKeycode($para['sign']);
+            $iv   = strrev($key2);
+            $reqstr = openssl_decrypt(base64_decode($para['code']), 'aes-128-cbc', $key2, true, $iv);
+            $para = json_decode($reqstr,true);
+        }
+       $this->log('base',$para,'参数');
+        $method= $this->getContext()->getActionName();
+        $this->log('base',['方法名'=>$method,'控制器'=>$this->getContext()->getControllerName()],'接口地址');
+        if(isset($para['appid'])){
+            $rel=yield $this->getObject(ApplicationModel::class)->getParaByAppid($para['appid'],'is_disable');
+            $this->log('base',$rel,'黑名单');
+            if($rel[0]['is_disable']==1 && !in_array($method,$this->exceptMethod)){
+                $this->resCode=1;
+                $this->resMsg='该应用已禁用';
+                $this->encryptOutput($key2,$iv,200);return;
+            }
+
+        }
+
     }
 
     protected function genRandStr( $length = 8 )
@@ -241,7 +266,38 @@ class BaseController extends Controller
         }
     }
 
-    //生成uuid
+    /**
+     * @brief 检测函数必传参数是否存在
+     * @param $params array 关联数组 要检查的参数
+     * @param array $mod array 索引数组 要检查的字段
+     * @param array $fields array 索引数组 额外要检查参数的字段
+     * @return bool
+     */
+    public function checkParamsExists($params, $mod = [], $fields = [])
+    {
+        if (empty($params)) {
+            return false;
+        }
+        $params = is_array($params) ? $params : [$params];
+
+        if ($fields) {
+            $fields = array_flip($fields);
+            $params = array_merge($params, $fields);
+        }
+
+        foreach ($mod as $mod_key => $mod_value) {
+            if (!array_key_exists($mod_value, $params)) {
+                return false;
+            }
+        }
+        return true;
+
+    }
+
+    /**
+     * 生成uuid
+     * @return string
+     */
     public  function guid(){
         if (function_exists('com_create_guid')){
             return com_create_guid();
@@ -257,6 +313,9 @@ class BaseController extends Controller
             return $uuid;
         }
     }
+
+
+
 //判断是否余额不足
     public function balanceIsEnough($para,$num){
         $swich_time=getInstance()->config->get('app2account_time','2018-07-10 00:00:00');
@@ -287,7 +346,6 @@ class BaseController extends Controller
         $balance=yield $this->masterDb->select('dgas')->from('account')
             ->where('appid', $para['appid'])
             ->andwhere('address',$para['address'])->go();
-        var_dump($balance['result'][0]['dgas']);
         if($balance['result'][0]['dgas']<($charge+$para['dgas']))
             return ['status'=>false,'mes'=>'余额不足3'];
         if(isset($para['order_sn']))
@@ -605,13 +663,6 @@ class BaseController extends Controller
         return ['status'=>true,'mes'=>'操作成功'];
     }
 
-
-
-    //子链
-    public function getRedio($appid){
-        return 1;
-    }
-
     //根据参数算出手续费
     /*手续费 = 开发者appid + fromaddr + toaddr + amount+ + 备注
      *手续费 = （手续费）* 0.0001
@@ -699,13 +750,15 @@ class BaseController extends Controller
 //        $flag=false;
 //        while($time<=3 and $flag==false){
             $info= $this->getObject(ApplicationModel::class);
-            $rel=yield $info->getParaByAppid($appid,'token_url,account_len');
-
+            $rel=yield $info->getParaByAppid($appid,'pay_callback_url,precisions');
+var_dump('rel',$rel);
              $mul_len=getInstance()->config->get('dgas.mul_num',1000000000000000000);
             $para['dgas']=$this->calc($para['dgas'],$mul_len,'mul');
-            $para['subchain']=$this->calc($para['subchain'],$rel[0]['account_len'],'mul');
+            var_dump('706------',$para);
+            var_dump('706------',$rel[0]['precisions']);
+            $para['amount']=$this->calc($para['amount'],$rel[0]['precisions'],'mul');
 
-            $rel= yield $this->subRecharge($para,$rel[0]['token_url']);
+            $rel= yield $this->subRecharge($para,$rel[0]['pay_callback_url']);
 //            if($rel=='ok')
 //                $flag==true;
 //            else{
