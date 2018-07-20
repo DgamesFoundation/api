@@ -79,7 +79,7 @@ class Info extends BaseController
      */
     public function actionUpOrderStatus(){
         $code=json_decode($this->getContext()->getInput()->getRawContent(),true);
-
+        var_dump("code=======",$code);
 //        $code = $this->getContext()->getInput()->post('code'); // Encrypt userinfo
 //        $sign = $this->getContext()->getInput()->post('sign'); // key1
 //        $code=json_decode($code,true);

@@ -96,10 +96,9 @@ class Poa extends BaseModel
             $formatDeviceData = $this->parseDeviceInfo($uinfoRes['deviceinfo']);
             $formatUserData = $this->parseUserInfo($poainfo);
             $scoreinfo = json_decode($scoreinfoStr, true);
-            //var_dump("fomatuserdata",$formatUserData);return;
+            $isroot = ($formatDeviceData['IS_ROOT'] === true) ? 1 : 0;
+            $cpuabi = ($formatDeviceData['CPU_ABI'] === false) ? 1 : 0;   // 非x86为1 , x86 为0
             if ($scoreinfo) {
-                $isroot = $formatDeviceData['IS_ROOT'] ? 1 : 0;
-                $cpuabi = $formatDeviceData['CPU_ABI'] ? 0 : 1;                      // 非x86反向
                 $wifi = $formatUserData['WIFI_RSSI'] ? $scoreinfo['WIFI_RSSI'] + 1 : $scoreinfo['WIFI_RSSI'];
                 $frontime = isset($formatUserData['FRONT_TIME']) ? $scoreinfo['FRONT_TIME'] + 1 : $scoreinfo['FRONT_TIME'];
                 $longtude = $formatUserData['LONGITUDE'] ? $scoreinfo['LONGITUDE'] + 1 : $scoreinfo['LONGITUDE'];
@@ -108,15 +107,13 @@ class Poa extends BaseModel
                 $microphone = isset($formatUserData['MICROPHONE']) ? $scoreinfo['MICROPHONE'] + 1 : $scoreinfo['MICROPHONE'];
                 $light = $formatUserData['LIGHT'] ? $scoreinfo['LIGHT'] + 1 : $scoreinfo['LIGHT'];
             } else {
-                $isroot = 1;
-                $wifi = 1;
-                $cpuabi = 1;
-                $frontime = 1;
-                $longtude = 1;
-                $gravityx = 1;
-                $battery = 1;
-                $microphone = 1;
-                $light = 1;
+                $wifi = 0;
+                $frontime = 0;
+                $longtude = 0;
+                $gravityx = 0;
+                $battery = 0;
+                $microphone = 0;
+                $light = 0;
             }
 
             $currItemInfo = [
@@ -151,12 +148,6 @@ class Poa extends BaseModel
             list($k, $v) = explode("=", $uinfo);
             $res[$k] = $v ? true : false;
         }
-        /*$res = ['WIFI_RSSI' => $userInfo['WIFI_RSSI'] ?? false,
-            'LONGITUDE' => $userInfo['LONGITUDE'] ?? false, // GPS
-            'GRAVITY_X' => $userInfo['GRAVITY_X'] ?? false, // 重力
-            'BATTERY' => $userInfo['BATTERY'] ?? false,
-            'MICROPHONE' => $userInfo['MICROPHONE'] ?? false,
-            'LIGHT' => $userInfo['LIGHT'] ?? false];*/
         return $res;
     }
 
@@ -176,45 +167,20 @@ class Poa extends BaseModel
             $res[$k] = $v;
             if ($k == 'CPU_ABI') {
                 $res[$k] = ($v == 'X86') ? true : false;
+            } elseif ($k == 'IS_ROOT') {
+                $res[$k] = ($v == 'true') ? true : false;
             }
-
         }
+        var_dump("parase", $res);
         return $res;
     }
 
-    /**
-     *
-     * 获取Deviceinfo积分  暂无用
-     *
-     * @param $user_data
-     * @return int
-     */
-    public function getDeviceInfoScore($user_data)
-    {
-        $deviceInfo = explode("\n", $user_data);
-
-        $totalScore = 1;
-
-        foreach ($deviceInfo as $di) {
-            list($k, $v) = explode("=", $di);
-            switch ($k) {
-                case "IS_ROOT":
-                    if (!$v) {
-                        $totalScore -= 1;
-                    }
-                    break;
-                case "CPU_ABI":
-                    if ($v == "X86") {
-                        $totalScore -= 1;
-                    }
-                    break;
-            }
-            if ($totalScore <= 0) {
-                break;
-            }
-        }
-        return $totalScore;
-        //$res = $this->masterDb->select("*")->from("poa")->go();
+    public function addBlacklist($address){
+        $res = yield $this->masterDb->update("account")
+            ->set(['is_disable'=>1])
+            ->where("address",$address)
+            ->go();
+        return $res;
     }
 
     /**
@@ -224,17 +190,18 @@ class Poa extends BaseModel
      */
     public function getUserInfoScore($appid, $address, $deviceInfo)
     {
-        //var_dump("calcDevice:", $deviceInfo);
         $transNum = yield $this->calcTransactionScore($appid, $address);
         $totalScore = 0;
         foreach ($deviceInfo as $k => $v) {
             if ($k == "IS_ROOT") {
-                if (!$v) {
-                    $totalScore = -1;
+                if ($v === 1) {
+                    $this->addBlacklist($address);
+                    return 0;
                 }
             } elseif ($k == "CPU_ABI") {
-                if (!$v) {
-                    $totalScore = -1;
+                if ($v === 0) {  // 0 为x86
+                    $this->addBlacklist($address);
+                    return 0;
                 }
             } elseif ($k == "FRONT_TIME") {
                 if ($v >= 8) {
@@ -290,7 +257,6 @@ class Poa extends BaseModel
             $totalScore += 0.1;
         }
         return $totalScore;
-        //$res = $this->masterDb->select("*")->from("poa")->go();
     }
 
     //生成gas_log
@@ -323,14 +289,14 @@ class Poa extends BaseModel
             ->where("appid", $appid)
             ->where("address", $address)
             ->go();
-        var_dump("rewardGas-------------------",$currentRes);
+        var_dump("rewardGas-------------------", $currentRes);
         foreach ($currentRes['result'] as $v) {
             $rewardGas = $v['dgas'] + $dgas;
             yield $this->masterDb->update("account")
                 ->set(['dgas' => $rewardGas,
                     'update_time' => time()])
                 ->where('appid', $appid)
-                ->where('address',$address)
+                ->where('address', $address)
                 ->go();
 
             $res = yield $this->masterDb->insert("reward")
@@ -404,8 +370,7 @@ class Poa extends BaseModel
             ->go();
 
         $reso = $res['result'];
-        if (!$reso) {                                      // 不存在则新增一条记录
-
+        if (!$reso) {                                      // 不存在则新增一条记录, 以此为poa结算标记
             /*=============   奖励 ==================*/
             $preHour = date("H") - 1;
             if ($preHour < 0) {
@@ -419,10 +384,10 @@ class Poa extends BaseModel
                 //->where('count', $limitCount, Miner::LESS_THAN_OR_EQUAL)
                 ->where("hour", $preHour)// 结算前一小时的奖励
                 ->go();
-            var_dump("previourres=======================",$appid,$address,$currdate,$preHour,$previoursRes);
+            var_dump("previourres=======================", $appid, $address, $currdate, $preHour, $previoursRes);
             if ($previoursRes['result']) { // 结算Gas的计算
                 $previoursScoreInfo = $previoursRes['result'][0]['scoreinfo'];
-                $previoursScoreInfoObj = json_decode($previoursScoreInfo,true);
+                $previoursScoreInfoObj = json_decode($previoursScoreInfo, true);
                 $poaScore = yield $this->calcRewardWithPoa($appid, $address, $previoursScoreInfoObj);
                 $dgas = $poaScore['dgas'];
                 yield $this->rewardGas($appid, $address, $dgas);
@@ -453,19 +418,10 @@ class Poa extends BaseModel
 
             $poaScore = yield $this->calcRewardWithPoa($appid, $address, $newscoreInfo);  // 按需优化 poa必须是上传者的poa
 
-            // $dgas = $v['dgas'];
-            // $historydgas = $v['historydgas'];
-
-            /*if ($poaScore['dgas'] < $historydgas) { // 最新的小于历史,则以最新的为准
-                $historydgas = $poaScore['dgas'];
-                $dgas = $historydgas;
-            }*/
-
             $pk = $v['id'];
             $updatetime = $v['update_time'];
 
             $diffReportInterval = (time() - $updatetime) / 60; // 计算分钟差
-            //var_dump($diffReportInterval, $reportInterval, $newscoreInfo);
             $count = $v['count'] + 1; // 仅在正常上报时设置，及有一次上报异常设置
             // 正常上报区间
             if ($diffReportInterval <= $reportInterval) {
@@ -477,11 +433,6 @@ class Poa extends BaseModel
                         'count' => $count,
                         'update_time' => time()])
                     ->where('id', $pk)->go();
-
-                /*if ($count >= $limitCount) {
-                    // 进行结算任务
-                    yield $this->rewardGas($appid, $address, $dgas);
-                }*/
                 continue;
             }
 
@@ -496,12 +447,6 @@ class Poa extends BaseModel
                         'count' => $count,
                         'update_time' => time()])
                     ->where('id', $pk)->go();
-
-                /*if ($count >= $limitCount) {
-                    // 进行结算任务
-                    yield $this->rewardGas($appid, $address, $dgas);
-                }*/
-
             } elseif ($v['two_report'] == 1) {            // 超出二次
                 yield $this->masterDb->update("poa_balance")
                     ->set(['two_report' => 0,

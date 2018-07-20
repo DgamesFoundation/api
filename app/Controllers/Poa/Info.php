@@ -123,6 +123,7 @@ class Info extends BaseController
         $userid = $reqobj['user_key'];
         $userData = trim($reqobj['user_data']);
         $poaObj =  $this->getObject(Poa::class);
+        var_dump("UPPOAINFO:",$userData);
         yield $poaObj->poaReportWithHour($appid,$userid,$userData);
         //$arr = explode("\n",$userData);
         //var_dump("Arr",$arr);
