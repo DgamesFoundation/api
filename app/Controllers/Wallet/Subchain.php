@@ -12,6 +12,7 @@ use App\Models\Wallet\SubchainModel;
 use App\Models\Wallet\DgasModel;
 use App\Models\Wallet\ApplicationModel;
 use App\Controllers\Common\BaseController;
+use App\Models\Wallet\InfoModel;
 
 class Subchain extends BaseController
 {
@@ -172,17 +173,6 @@ class Subchain extends BaseController
             'd2s'=>$result['d2s']['data']['id']];
         yield $dgasMod->AddLog_Dgame2s($para,$ids);
         yield $this->masterDb->goCommit($trans);
-        //申请转子链
-        $subData=['dgas' => $para['dgame']*$dgas,
-            'amount'=> $para['subchain'],
-            'faddress'=>$para['fromaddr'],
-            'taddress'=>$para['address'],
-            'out_trade_no'=>$result['sub']['data']['order'],
-            'create_time'=>time(),
-            'update_time'=>time(),
-            'type'=>0];
-        $res=yield $this->SubRechargeLimit3($subData,$para['appid']);
-        var_dump($res);
 //        //获得订单编号
         $this->resMsg='操作成功';
         $this->data=['order'=>$result['sub']['data']['order']];
@@ -332,43 +322,74 @@ class Subchain extends BaseController
         yield $this->getObject(DgasModel::class)
             ->Insert_Gaslog([$gas_log]);
     }
+    /**
+     * 修改子链2子链状态和txid
+     */
+    public function actionUpSubStatus(){
+        /*====================  接受加密参数 =========================*/
+        $code = $this->getContext()->getInput()->post('code'); // Encrypt userinfo
+        $sign = $this->getContext()->getInput()->post('sign'); // key1
 
-
-
-
-
-
-
-
-
-    //子链交易列表
-    public function actiongetSubchainList(){
-        $get=$this->getContext()->getInput()->getAllPostGet();
-        if(!(isset($get['appid']) && isset($get['address']) && isset($get['page'])&& isset($get['pageSize']))){
+        $key2 = yield $this->checkKeycode($sign);
+        $iv   = strrev($key2);
+        $reqstr = openssl_decrypt(base64_decode($code), 'aes-128-cbc', $key2, true, $iv);
+        $para = json_decode($reqstr,true);
+        /*====================  接受加密参数  =========================*/
+        //$para=json_decode($this->getContext()->getInput()->getRawContent(),true);
+        $params=yield $this->checkParamsExists($para,['txid','orderid']);
+        if(!$params){
             $this->resCode = 1;
             $this->resMsg = "参数异常";
-            $this->interOutputJson(403);
+            $this->encryptOutput(403);return;
         }
+        $data=['status'=>1,'txid'=>$para['txid']];
+        $up=yield $this->getObject(SubchainModel::class)
+            ->UpDataByQuery_S2S($data,['txid'=>$para['orderid']]);
+        if($up){
+            $this->resStauts = "操作成功";
+        }else
+        {
+            $this->resCode = 1;
+            $this->resStauts = "操作失败";
+        }
+        $this->encryptOutput($key2,$iv,200);
+    }
 
-        /*=================日志BEGAIN===================*/
-        $content=[PHP_EOL.'接收参数'.date("Y-m-d H:i:s",time()).PHP_EOL.var_export($get,TRUE).PHP_EOL];
-        file_put_contents("/tmp/subchainlist",$content,FILE_APPEND);
-        /*=================日志END===================*/
+    /**
+     * 子链交易列表
+     */
+    public function actiongetSubchainList(){
+        $get=$this->getContext()->getInput()->getAllPostGet();
+        $params=yield $this->checkParamsExists($get,['appid','address','page','pageSize']);
+        $this->log('subchainlist',$get,'参数');
+        if(!$params){
+            $this->resCode = 1;
+            $this->resMsg = "参数异常";
+            $this->encryptOutput(403);return;
+        }
         $size=$get['pageSize']>50 ? 50 : (int)$get['pageSize'];
         $size=$size<0 ? 1 : $size;
         $get['page']=$get['page']<0 ? 1 : $get['page'];
         $start=($get['page']-1)*$size;
-        $result  = yield $this->masterDb->select("type,exchange_id,id")->from('subchain_log')->where('appid',$get['appid'])->andwhere('address',$get['address'])->andwhere('type' ,'2','!=')->orderby('create_time','desc')->limit($size,$start)->go();
-        $tb=array(0=>'dgame2subchain',1=>'dgas2subchain');
+        $result=yield $this->getObject(SubchainModel::class)
+            ->getDataByQuery_subLog("type,exchange_id,id",['appid'=>$get['appid'],
+                'address'=>$get['address'],
+                'type'=>['2','!=']],$start,$size);
+        $tb=[0=>'dgame2subchain',1=>'dgas2subchain'];
         $type=[0=>'DGAME',1=>'DGAS'];
-        foreach ($result['result'] as $k=>$v){
-            $result['result'][$k]['type']=$type[$result['result'][$k]['type']];
-            $rel=yield $this->masterDb->select("create_time,subchain")->from($tb[$v['type']])->where('id',$v['exchange_id'])->go();
-            $result['result'][$k]['create_time']=$rel['result'][0]['create_time'];
-            $result['result'][$k]['subchain']=$rel['result'][0]['subchain'];
-            unset($result['result'][$k]['exchange_id']);
+        $arr=[];
+        foreach ($result as $k=>$v){
+            $result[$k]['type']=$type[$result[$k]['type']];
+            $rel=yield $this->getObject(InfoModel::class)
+                ->getDataByQuery('create_time,subchain,status',$tb[$v['type']],['id'=>$v['exchange_id']]);
+            $result[$k]['create_time']=$rel[0]['create_time'];
+            $result[$k]['subchain']=$rel[0]['subchain'];
+            unset($result[$k]['exchange_id']);
+            if($rel[0]['status']==1){
+                $arr[]=$result[$k];
+            }
         }
-        $this->data = $result['result'] ? $result['result'] : null;
+        $this->data = $result ? $result : null;
         $this->interOutputJson(200);
     }
 
@@ -382,7 +403,10 @@ class Subchain extends BaseController
             $this->interOutputJson(200) ;
         }
         $tb=array(0=>'dgame2subchain',1=>'dgas2subchain');
-        $rel1=yield $this->masterDb->select("id,create_time,fromaddr,txid,subchain")->from($tb[$rel['result'][0]['type']])->where('id',$rel['result'][0]['exchange_id'])->go();
+        $rel1=yield $this->masterDb
+            ->select("id,create_time,fromaddr,txid,subchain")
+            ->from($tb[$rel['result'][0]['type']])
+            ->where('id',$rel['result'][0]['exchange_id'])->go();
         $rel['result'][0]['create_time']=$rel1['result'][0]['create_time'];
         $rel['result'][0]['subchain']=$rel1['result'][0]['subchain'];
         $this->data = $rel ? $rel['result'][0] : null;
@@ -404,29 +428,7 @@ class Subchain extends BaseController
     }
 
 
-    //修改子链2子链状态和txid
-    public function actionUpSubStatus(){
-        /*====================  接受加密参数 =========================*/
-        $code = $this->getContext()->getInput()->post('code'); // Encrypt userinfo
-        $sign = $this->getContext()->getInput()->post('sign'); // key1
 
-        $key2 = yield $this->checkKeycode($sign);
-        $iv   = strrev($key2);
-        $reqstr = openssl_decrypt(base64_decode($code), 'aes-128-cbc', $key2, true, $iv);
-        $para = json_decode($reqstr,true);
-        /*====================  接受加密参数  =========================*/
-        //$para=json_decode($this->getContext()->getInput()->getRawContent(),true);
-        $data=array('status'=>1,'txid'=>$para['txid']);
-        var_dump($para,$this->getContext()->getInput()->getRawContent());
-        $up= yield $this->masterDb->update('subchain2subchain')->set($data)->where('txid', $para['orderid'])->go();
-        if($up['affected_rows']==0){
-            $this->resCode = 1;
-            $this->resStauts = "FAIL";
-            $this->encryptOutput($key2,$iv,200);
-        }
-        $this->resCode=1;
-        $this->encryptOutput($key2,$iv,200);
-    }
 
 
 }

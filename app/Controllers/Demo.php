@@ -21,88 +21,44 @@ use App\Models\Wallet\InfoModel;
 use App\Controllers\Common\BaseController;
 class Demo extends BaseController
 {
-    public function actionAddS2S(){
-        //生成subchain充值订单（dgas2subchain）
-        /*====================  接受加密参数 =========================*/
-        $code = $this->getContext()->getInput()->post('code'); // Encrypt userinfo
-        $sign = $this->getContext()->getInput()->post('sign'); // key1
 
-        $key2 = yield $this->checkKeycode($sign);
-        $iv   = strrev($key2);
-        $reqstr = openssl_decrypt(base64_decode($code), 'aes-128-cbc', $key2, true, $iv);
-        $para = json_decode($reqstr,true);
-        /*====================  接受加密参数  =========================*/
-//        $para=json_decode($this->getContext()->getInput()->getRawContent(),true);
-        $params=yield $this->checkParamsExists($para,['appid','fromaddr','toaddr','subchain']);
-        if(!$params){
-            $this->resCode = 1;
-            $this->resMsg = "参数异常";
-            $this->encryptOutput(403);return;
-        }
-        //计算手续费
-        $sc_arr = ['appid' => strlen($para['appid']),
-            'fromaddr' => strlen($para['fromaddr']),
-            'tooaddr' => strlen($para['toaddr']),
-            'remark'=>strlen(''),
-            'subchain' => strlen($para['subchain'])];
-        $charge=array_sum($sc_arr);
-        $sc_radio=getInstance()->config->get('ServerCharge',0.0001);
-        $para['Scharge']=bcmul($charge,$sc_radio, 5);
-
-        //事务开始--
-        $trans = yield $this->masterDb->goBegin();
-        //扣手续费
-        $consume_rel=yield $this->getObject(DgasModel::class)
-            ->consumeDgas_new($para,$trans,true,true);
-        if(!$consume_rel['status']){
-            yield $this->masterDb->goRollback($trans);
-            $this->resCode=1;
-            $this->resMsg=$consume_rel['mes'];
-            $this->encryptOutput(200);return;
-        }
-        //插入订单
-        $txid=$this->guid();
-        $s2s = ['appid'=>$para['appid'],
-            'fromaddr'=>$para['fromaddr'],
-            'toaddr'=>$para['toaddr'],
-            'subchain'=>$para['subchain'],
-            'txid'=>$txid,
-            'status'=>0,
+    public function actionTest(){
+        //申请转子链
+        $subData=['dgas' => 11,
+            'amount'=> 22,
+            'faddress'=>'1111111111',
+            'taddress'=>'2222222222',
+            'out_trade_no'=>'33333333333333333',
             'create_time'=>time(),
-            'update_time'=>time()];
-        $res= yield  $this->getObject(SubchainModel::class)->Inserts2s($s2s,$trans);
-        if(!$res){
-            $this->resCode=1;
-            $this->resMsg='操作失败';
-            yield $this->masterDb->goRollback($trans);
-            $this->encryptOutput(200);return;
-        }
-        //添加gas_log
-        yield $this->AddGas_s2s_log($para,$res['id']);
-        //事务结束--
-        yield $this->masterDb->goCommit($trans);
-        $this->resCode=0;
-        $this->data=['orderid'=>$txid];
-        $this->resMsg='操作成功';
-        $this->encryptOutput($key2,$iv,200);
+            'update_time'=>time(),
+            'type'=>0];
+        $res=yield $this->getObject(SubchainModel::class)
+            ->SubRecharge($subData,'0x1111111111');
+        $this->output($res);
     }
 
-    public function AddGas_s2s_log($para,$id){
-        $swich_time=getInstance()->config->get('app2account_time','2018-07-10 00:00:00');
-        if(time()<strtotime($swich_time)){
-            $address=$this->getObject(ApplicationModel::class)
-                ->getDataByQuery('address',['appid'=>$para['appid']]);
-            $address=$address[0]['address'];
-        }else
-            $address=$para['fromaddr'];
-        $gas_log=['appid'=>$para['appid'],
-            'address'=>$address,
-            'exchange_id'=>$id,
-            'type'=>self::TRANSFER,
-            'flag'=>self::DGAS_CONSUME_SCHARGE,
-            'create_time'=>time()];
-        yield $this->getObject(DgasModel::class)
-            ->Insert_Gaslog([$gas_log]);
+
+    //子链详情
+    public function actionGetDetail(){
+        $id=$this->getContext()->getInput()->get('id');
+        $rel=yield $this->getObject(SubchainModel::class)
+            ->getDataByQuery_subLog('exchange_id,type',['id'=>$id]);
+        if(!$rel){
+            $this->data = $rel ? $rel[0] : null;
+            $this->interOutputJson(200) ;return;
+        }
+        $tb=array(0=>'dgame2subchain',1=>'dgas2subchain');
+        var_dump($rel);
+        $para_str="id,create_time,fromaddr,subchain";
+        if($tb[$rel[0]['type']]==0)
+            $para_str.=",txid";
+        $rel1=yield $this->getObject(InfoModel::class)
+            ->getDataByQuery($para_str,$tb[$rel[0]['type']],['id'=>$rel[0]['exchange_id']]);
+        var_dump($rel1);
+        $rel[0]['create_time']=$rel1[0]['create_time'];
+        $rel[0]['subchain']=$rel1[0]['subchain'];
+        $this->data = $rel ? $rel[0] : null;
+        $this->interOutputJson(200) ;
     }
         /*====================================================================================================================================================================*/
     // 测试接口

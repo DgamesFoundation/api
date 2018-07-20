@@ -941,6 +941,8 @@ class Miner
             $statement = $this->getDeleteStatement($usePlaceholders);
         }
 //        var_dump('set UPdate测试',$statement);
+        $content=[PHP_EOL.'================'.date("Y-m-d H:i:s",time()).PHP_EOL.$statement.PHP_EOL];
+        file_put_contents('/tmp/sql_log',$content,FILE_APPEND);
         return $statement;
     }
 
