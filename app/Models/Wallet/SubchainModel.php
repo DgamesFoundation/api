@@ -104,6 +104,16 @@ class SubchainModel extends  BaseModel
     public function InsertLog($data,$trans=''){
         $res= yield  $this->masterDb->insert($this->log)->set($data)->go($trans);
         return $res['affected_rows']>0 ? $res['insert_id'] : false;
+
+        $num = 0;
+        foreach ($data as $k => $v) {
+            $data[$k]['create_time'] = time();
+            $res1 = yield  $this->masterDb->insert($this->log)->set($data[$k])->go($trans);
+            if ($res1['result'])
+                $num++;
+        }
+        return $num != count($data);
+
     }
 
     /**

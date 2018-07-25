@@ -214,7 +214,11 @@ class Dgas extends BaseController
             $this->data = $rel ? $rel['result'][0] : null;
             $this->interOutputJson(200) ;
         }
-        $rel1=yield $this->masterDb->select("id,create_time,dgas,fromaddr")->from('dgame2dgas')->where('id',$rel['result'][0]['exchange_id'])->go();
+        $rel1=yield $this->masterDb
+            ->select("id,create_time,dgas,fromaddr")
+            ->from('dgame2dgas')
+            ->where('id',$rel['result'][0]['exchange_id'])
+            ->go();
         $rel['result'][0]['create_time']=$rel1['result'][0]['create_time'];
         $rel['result'][0]['dgas']=$rel1['result'][0]['dgas'];
         $this->data = $rel ? $rel['result'][0] : null;
@@ -223,7 +227,11 @@ class Dgas extends BaseController
 
     public function actiongetDtailByOrder(){
         $order=$this->getContext()->getInput()->get('order');
-        $rel1=yield $this->masterDb->select("id,create_time,dgas,fromaddr")->from('dgame2dgas')->where('order_sn',$order)->go();
+        $rel1=yield $this->masterDb
+            ->select("id,create_time,dgas,fromaddr")
+            ->from('dgame2dgas')
+            ->where('order_sn',$order)
+            ->go();
         $rel['result'][0]['create_time']=$rel1['result'][0]['create_time'];
         $rel['result'][0]['dgas']=$rel1['result'][0]['dgas'];
         $this->data = $rel ? $rel['result'][0] : null;
