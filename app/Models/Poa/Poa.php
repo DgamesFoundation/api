@@ -175,6 +175,13 @@ class Poa extends BaseModel
         return $res;
     }
 
+    /**
+     *
+     * 添加黑名单
+     *
+     * @param $address
+     * @return mixed
+     */
     public function addBlacklist($address){
         $res = yield $this->masterDb->update("account")
             ->set(['is_disable'=>1])
@@ -328,7 +335,6 @@ class Poa extends BaseModel
         if ($poainfo) {
             $score = yield $this->getUserInfoScore($appid, $address, $poainfo);
             $dgas = $score * $this->totalRatio; //$score 区间[0-1]
-            //var_dump("calcRew", $score, $dgas);
             return ['score' => $score,
                 'dgas' => $dgas];
         } else {

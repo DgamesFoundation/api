@@ -73,73 +73,84 @@ class Task extends BaseController
      * @throws \PG\MSF\Client\Exception
      */
     public function actionDame2dgas(){
-        $dgames2dgas = yield $this->masterDb->select("*")->from("dgame2dgas")->where("status",0)->go();
-        $ehtapiHost = getInstance()->config->get("url.ethapi");
-        foreach ($dgames2dgas['result'] as $dr){
-            var_dump($dr);
-            $txid = $dr['txid'];
-            $client  = $this->getObject(Client::class);
-            $result = yield $client->goSingleGet($ehtapiHost.'/api?module=transaction&action=gettxreceiptstatus&txhash='.$txid.'&apikey=YourApiKeyToken');
+        while (true){
+            $dgames2dgas = yield $this->masterDb->select("*")->from("dgame2dgas")->where("status",0)->go();
+            $ehtapiHost = getInstance()->config->get("url.ethapi");
+            foreach ($dgames2dgas['result'] as $dr){
+                var_dump($dr);
+                $txid = $dr['txid'];
+                $client  = $this->getObject(Client::class);
+                $result = yield $client->goSingleGet($ehtapiHost.'/api?module=transaction&action=gettxreceiptstatus&txhash='.$txid.'&apikey=YourApiKeyToken');
 
-            $resbody = json_decode($result['body'],true);
-            var_dump($resbody);
-            if($resbody['result']['status']){
-                $up = yield $this->masterDb->update("dgame2dgas")
-                    ->set(['status'=>1])
-                    ->where("txid",$txid)->go();
-                if($up['affected_rows']==0){
-                    continue;
+                $resbody = json_decode($result['body'],true);
+                var_dump($resbody);
+                if($resbody['result']['status']){
+                    $up = yield $this->masterDb->update("dgame2dgas")
+                        ->set(['status'=>1])
+                        ->where("txid",$txid)->go();
+                    if($up['affected_rows']==0){
+                        continue;
+                    }
+                    $addDgas=$dr['dgas']-$dr['Scharge'];//充值dgas，扣掉手续费
+                    $address=$dr['address'];
+
+                    $data=['appid'=>$dr['appid'],
+                        'num'=>$addDgas,
+                        'up'=>'+',
+                        'address'=>$address];            // 扣Dgas地址
+                    $account=yield $this->consumeDgas($data);
+
+                    //插入gas_log
+                    $gas_log=['appid'=>$dr['appid'],
+                        'address'=>$address,
+                        'exchange_id'=>$dr['id'],
+                        'type'=>self::DGAS_RECHARGE,
+                        'flag'=>self::DGAS_NORMAL];
+                    $this->getObject(DgasModel::class)
+                        ->Insert_Gaslog($gas_log);
+                    //$gas_log=yield $this->addGas_log_arr($gas_log,'');
                 }
-                $addDgas=$dr['dgas']-$dr['Scharge'];//充值dgas，扣掉手续费
-                $address=$dr['address'];
-
-                $data=['appid'=>$dr['appid'],
-                    'num'=>$addDgas,
-                    'up'=>'+',
-                    'address'=>$address];            // 扣Dgas地址
-                $account=yield $this->consumeDgas($data);
-
-                //插入gas_log
-                $gas_log=['appid'=>$dr['appid'],
-                    'address'=>$address,
-                    'exchange_id'=>$dr['id'],
-                    'type'=>self::DGAS_RECHARGE,
-                    'flag'=>self::DGAS_NORMAL];
-                $this->getObject(DgasModel::class)
-                    ->Insert_Gaslog($gas_log);
-                //$gas_log=yield $this->addGas_log_arr($gas_log,'');
             }
+            echo "Sleep 5!!!!!\r\n";
+            sleep(5);
         }
+
     }
 
     public function actionDame2subchain(){
-        $dgames2dgas = yield $this->masterDb->select("*")->from("dgame2subchain")->where("status",0)->go();
-        $ehtapiHost = getInstance()->config->get("url.ethapi");
-        foreach ($dgames2dgas['result'] as $dr){
-            $txid = $dr['txid'];
-            $client  = $this->getObject(Client::class);
-            $result = yield $client->goSingleGet($ehtapiHost.'/api?module=transaction&action=gettxreceiptstatus&txhash='.$txid.'&apikey=YourApiKeyToken');
+        while (true) {
+            $dgames2dgas = yield $this->masterDb->select("*")->from("dgame2subchain")->where("status", 0)->go();
+            $ehtapiHost = getInstance()->config->get("url.ethapi");
+            var_dump($dgames2dgas);
+            foreach ($dgames2dgas['result'] as $dr) {
+                $txid = $dr['txid'];
+                $client = $this->getObject(Client::class);
+                $result = yield $client->goSingleGet($ehtapiHost . '/api?module=transaction&action=gettxreceiptstatus&txhash=' . $txid . '&apikey=YourApiKeyToken');
+                var_dump($ehtapiHost . '/api?module=transaction&action=gettxreceiptstatus&txhash=' . $txid . '&apikey=YourApiKeyToken');
+                $resbody = json_decode($result['body'], true);
+                var_dump($resbody);
+                if ($resbody['result']['status']) {
+                    $res = yield $this->masterDb->update("dgame2subchain")
+                        ->set(['status' => 1])
+                        ->where("txid", $txid)->go();
 
-            $resbody = json_decode($result['body'],true);
-            if($resbody['result']['status']){
-                $res = yield $this->masterDb->update("dgame2subchain")
-                    ->set(['status'=>1])
-                    ->where("txid",$txid)->go();
-
-                if($res['affected_rows']>0){
-                    $subData=['dgas' => $dr['dgame'],
-                        'amount'=>$dr['subchain'],
-                        'faddress'=>$dr['fromaddr'],
-                        'taddress'=>$dr['toaddr'],
-                        'out_trade_no'=>$dr['order_sn'],
-                        'create_time'=>time(),
-                        'update_time'=>time(),
-                        'type'=>0];
-                    $subModel = $this->getObject(SubchainModel::class);
-                    $result = yield $subModel->SubRecharge($subData,$dr['appid']);
-                    var_dump($result);
+                    if ($res['affected_rows'] > 0) {
+                        $subData = ['dgas' => $dr['dgame'],
+                            'amount' => $dr['subchain'],
+                            'faddress' => $dr['fromaddr'],
+                            'taddress' => $dr['address'],
+                            'out_trade_no' => $dr['order_sn'],
+                            'create_time' => time(),
+                            'update_time' => time(),
+                            'type' => 0];
+                        $subModel = $this->getObject(SubchainModel::class);
+                        $result = yield $subModel->SubRecharge($subData, $dr['appid']);
+                        var_dump($subData, $result);
+                    }
                 }
             }
+            echo "sleep 5!!!!!\r\n";
+            sleep(5);
         }
     }
 }
