@@ -159,12 +159,14 @@ class BaseModel extends Model
      * @param $x
      * @return mixed|string
      */
-    protected function calc($m,$n,$x){
+    public  function calc($m,$n,$x,$precisions=8){
         $errors=array(
             '被除数不能为零',
             '负数没有平方根'
         );
-
+        $m =  sprintf("%.".$precisions."f",$m);
+        $n =  sprintf("%.".$precisions."f",$n);
+        bcscale($precisions);
         switch($x){
             case 'add':
                 $t=bcadd($m,$n);
@@ -200,7 +202,8 @@ class BaseModel extends Model
                 }
                 break;
         }
-        $t=preg_replace("/\..*0+$/",'',$t);
+//        $t=preg_replace("/\..*0+$/",'',$t);
+        $t=rtrim(rtrim($t, '0'), '.');
         return $t;
 
     }

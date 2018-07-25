@@ -13,25 +13,13 @@ use App\Models\Wallet\DgasModel;
 use App\Models\Wallet\InfoModel;
 use App\Models\Wallet\SubchainModel;
 use App\Models\Wallet\RewardModel;
+use App\Models\Wallet\AccountModel;
 
 class Dgas extends BaseController
 {
     public function actionReq(){
         $poa_header = $this->getContext()->getInput()->getHeader('poa');
 
-    }
-//根据子链地址和子链合约标识地址获得dgas余额
-    public function actionGetGasBalance(){
-        $get=$this->getContext()->getInput()->getAllPostGet();
-        if(!(isset($get['appid']) || isset($get['address']))){
-            $this->resCode = 1;
-            $this->resMsg = "参数异常";
-            $this->interOutputJson(403);
-        }
-        $result  = yield $this->masterDb->select("dgas")->from('account')->where('appid',$get['appid'])->where('address',$get['address'])->go();
-        $result['result']=$result['result'][0]['dgas'] ? $result['result'][0]['dgas'] : 0;
-        $this->data =['dgas'=>$result['result']] ;
-        $this->interOutputJson(200);
     }
     /**
      *  显示dgas交易记录
@@ -60,7 +48,7 @@ class Dgas extends BaseController
             'address'=>$get['address']];
         $result=yield $gas_log->getDataByQuery("type,exchange_id,flag,id",$query,$start,$size);
         $this->log('gas_list',$result,'返回数据1');
-        $result=yield $this->getListDtail($result);
+        $result=yield $this->getListDtail($result,$get['appid']);
         $this->log('gas_list',$result,'返回数据');
         $this->data = $result ? $result : null;
         $this->interOutputJson(200);
@@ -103,7 +91,8 @@ class Dgas extends BaseController
             'dgas'=>strlen($dgas)];
         $charge=array_sum($sc_arr);
         $sc_radio=getInstance()->config->get('ServerCharge',0.0001);
-        $charge=bcmul($charge,$sc_radio, 5);
+        $pre_len=yield $this->getPrecisionsLen($para['appid']);
+        $charge=$this->calc($charge,$sc_radio,'mul', $pre_len);//bcmul($charge,$sc_radio, 5);
         $orderId=$this->guid();
         $d2d=['appid' => $para['appid'],
             'fromaddr' => $para['fromaddr'],
@@ -114,7 +103,7 @@ class Dgas extends BaseController
             'dgas'=>$dgas,
             'ratio'=>$dgas,
             'Scharge'=>$charge,
-            'order_sn'=>$orderId,
+'order_sn'=>$orderId,
             'status'=>0,
             'create_time'=>time(),
             'update_time'=>time()];
@@ -138,10 +127,11 @@ class Dgas extends BaseController
      * @param $result
      * @return mixed
      */
-    public function getListDtail($result){
+    public function getListDtail($result,$appid){
         //获得记录详情
         $subchain=$this->getObject(SubchainModel::class);
         $info=$this->getObject(InfoModel::class);
+        $pre_len=yield $this->getPrecisionsLen($appid);
         $arr=[];
         foreach ($result as $k=>$v) {
             if ($v['type'] == 3 && $v['flag'] == 3) {
@@ -155,8 +145,8 @@ class Dgas extends BaseController
                     'num'=>strlen($rel[0]['subchain'])];
                 $result[$k]['num'] =array_sum($sc_para);
                 $radio=getInstance()->config->get('ServerCharge',0.0001);
-                var_dump($radio);
-                $result[$k]['num'] =bcmul($result[$k]['num'],$radio, 5);//$result[$k]['num']*$radio;
+//                var_dump($radio);
+                $result[$k]['num'] =$this->calc($result[$k]['num'],$radio,'mul', $pre_len);//$result[$k]['num']*$radio;
 //                $result[$k]['num']=$this->calc($result[$k]['num'],getInstance()->config->get('ServerCharge',0.0001),'mul');
 
                 $result[$k]['tran_type'] = 'DGAS';
@@ -197,6 +187,23 @@ class Dgas extends BaseController
         if($flag==3)
             return $tb[1];
         return $tb[$type];
+    }
+    /**
+     * 根据子链地址和子链合约标识地址获得dgas余额
+     */
+    public function actionGetGasBalance(){
+        $get=$this->getContext()->getInput()->getAllPostGet();
+        $params=$this->checkParamsExists($get,['appid','address']);
+        if(!$params){
+            $this->resCode = 1;
+            $this->resMsg = "参数异常";
+            $this->interOutputJson(403);return;
+        }
+        $result=yield $this->getObject(AccountModel::class)
+            ->getParaByData('dgas',['appid'=>$get['appid'],'address'=>$get['address']]);
+        $result=$result[0]['dgas'] ? $result[0]['dgas'] : 0;
+        $this->data =['dgas'=>$result] ;
+        $this->interOutputJson(200);
     }
 
     //获取dgas记录详情

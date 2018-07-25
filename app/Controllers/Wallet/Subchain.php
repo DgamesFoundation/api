@@ -51,6 +51,7 @@ class Subchain extends BaseController
         $subchain_ratio = yield $subchainMod->getRedio($para['appid']);
         $para['subchain'] = $para['dgas']*$subchain_ratio;
         //计算手续费
+        $pre_len=yield $this->getPrecisionsLen($para['appid']);
         $sc_arr = ['appid' => strlen($para['appid']),
             'fromaddr' => strlen($para['fromaddr']),
             'address' => strlen($para['toaddr']),
@@ -58,7 +59,7 @@ class Subchain extends BaseController
             'dgas' => strlen($para['dgas'])];
         $charge = array_sum($sc_arr);
         $sc_radio = getInstance()->config->get('ServerCharge',0.0001);
-        $para['Scharge'] = bcmul($charge,$sc_radio, 5);
+        $para['Scharge'] = $this->calc($charge,$sc_radio,'mul', $pre_len);//bcmul($charge,$sc_radio, 5);
         $dgasMod = $this->getObject(DgasModel::class);
         //事务开始
         $trans = yield $this->masterDb->goBegin();
@@ -100,8 +101,8 @@ class Subchain extends BaseController
             'create_time'=>time(),
             'update_time'=>time(),
             'type'=>1];
-        var_dump($subData);
-        $result = yield $this->SubRechargeLimit3($subData,$para['appid']);
+        $result = yield $this->getObject(SubchainModel::class)
+            ->SubRecharge($subData,$para['appid']);
         $this->encryptOutput($key2,$iv,200);
     }
 
@@ -129,7 +130,10 @@ class Subchain extends BaseController
         $subRatio = yield $this->getObject(SubchainModel::class)
             ->getRedio($para['appid']); //子链比例
         $dgas=getInstance()->config->get('dgas.ratio',100000);
-        $para['subchain']=$para['subchain']=bcmul(bcmul($para['dgame'],$dgas,10),$subRatio,10);
+        $dgasMod=$this->getObject(DgasModel::class);
+        $pre_len=yield $this->getPrecisionsLen($para['appid']);
+        $para['subchain']=$this->calc($para['dgame'],$dgas,'mul',$pre_len);
+        $para['subchain']=$this->calc($para['subchain'],$subRatio,'mul',$pre_len);
         //计算手续费
         $sc_arr = ['appid' => strlen($para['appid']),
             'fromaddr' => strlen($para['fromaddr']),
@@ -138,8 +142,8 @@ class Subchain extends BaseController
             'dgame' => strlen($para['dgame'])];
         $charge=array_sum($sc_arr);
         $sc_radio=getInstance()->config->get('ServerCharge',0.0001);
-        $para['Scharge']=bcmul($charge,$sc_radio, 5);
-        $dgasMod=$this->getObject(DgasModel::class);
+        $para['Scharge']=$this->calc($charge,$sc_radio,'mul',$pre_len);
+//        $para['Scharge']=bcmul($charge,$sc_radio, 5);
         //事务开始
         $trans = yield $this->masterDb->goBegin();
         //扣手续费
@@ -187,6 +191,7 @@ class Subchain extends BaseController
      */
     public function AddOrders_Dgame2Sub($para,$trans){
         $subchainMod = $this->getObject(SubchainModel::class);
+        $pre_len=yield $this->getPrecisionsLen($para['appid']);
         $subRatio = yield $subchainMod->getRedio($para['appid']); //子链比例
         //插入dgame2subchain
         $subArr=['appid'=>$para['appid'],
@@ -208,7 +213,7 @@ class Subchain extends BaseController
             'dgame' => $para['dgame'],
             'txid' => $para['txid'],
             'address' => $para['addr'],
-            'dgas'=>bcmul($para['dgame'],$dgas,10),
+            'dgas'=>$this->calc($para['dgame'],$dgas,'mul',$pre_len),
             'ratio'=>$dgas,
             'Scharge'=>$para['Scharge'],
             'order_sn'=>$sub['data']['order']];
@@ -259,7 +264,8 @@ class Subchain extends BaseController
             'subchain' => strlen($para['subchain'])];
         $charge=array_sum($sc_arr);
         $sc_radio=getInstance()->config->get('ServerCharge',0.0001);
-        $para['Scharge']=bcmul($charge,$sc_radio, 5);
+        $pre_len=yield $this->getPrecisionsLen($para['appid']);
+        $para['Scharge']=$this->calc($charge,$sc_radio, 'mul',$pre_len);//bcmul($charge,$sc_radio, 5);
 
         //事务开始--
         $trans = yield $this->masterDb->goBegin();
@@ -394,36 +400,46 @@ class Subchain extends BaseController
     }
 
 
-    //子链详情
+    /**
+     * 根据id获得子链详情
+     */
     public function actionGetDetail(){
         $id=$this->getContext()->getInput()->get('id');
-        $rel=yield $this->masterDb->select("exchange_id,type")->from('subchain_log')->where('id',$id)->go();
-        if(!$rel['result']){
-            $this->data = $rel ? $rel['result'][0] : null;
-            $this->interOutputJson(200) ;
+        $rel=yield $this->getObject(SubchainModel::class)
+            ->getDataByQuery_subLog('exchange_id,type',['id'=>$id]);
+        if(!$rel){
+            $this->data = $rel ? $rel[0] : null;
+            $this->interOutputJson(200) ;return;
         }
         $tb=array(0=>'dgame2subchain',1=>'dgas2subchain');
-        $rel1=yield $this->masterDb
-            ->select("id,create_time,fromaddr,txid,subchain")
-            ->from($tb[$rel['result'][0]['type']])
-            ->where('id',$rel['result'][0]['exchange_id'])->go();
-        $rel['result'][0]['create_time']=$rel1['result'][0]['create_time'];
-        $rel['result'][0]['subchain']=$rel1['result'][0]['subchain'];
-        $this->data = $rel ? $rel['result'][0] : null;
+        $para_str="id,create_time,fromaddr,subchain";
+        if($rel[0]['type']=='0')
+            $para_str.=",txid";
+        $rel1=yield $this->getObject(InfoModel::class)
+            ->getDataByQuery($para_str,$tb[$rel[0]['type']],['id'=>$rel[0]['exchange_id']]);
+        $rel[0]['create_time']=$rel1[0]['create_time'];
+        $rel[0]['subchain']=$rel1[0]['subchain'];
+        if($rel[0]['type']=='0')
+            $rel[0]['txid']=$rel1[0]['txid'];
+        $this->data = $rel ? $rel[0] : null;
         $this->interOutputJson(200) ;
     }
 
+    /**
+     * 根据订单和订单交易类型获得交易详情
+     */
     public function actiongetDtailByOrder(){
         $order=$this->getContext()->getInput()->get('order');
         $type=$this->getContext()->getInput()->get('type');
-
-        if($type=='dgas')
-            $rel1=yield $this->masterDb->select("id,create_time,subchain,fromaddr")->from('dgas2subchain')->where('order_sn',$order)->go();
-        elseif ($type=='dgame')
-            $rel1=yield $this->masterDb->select("id,create_time,subchain,fromaddr")->from('dgame2subchain')->where('order_sn',$order)->go();
-        $rel['result'][0]['create_time']=$rel1['result'][0]['create_time'];
-        $rel['result'][0]['num']=$rel1['result'][0]['subchain'];
-        $this->data = $rel ? $rel['result'][0] : null;
+        $tb=array(0=>'dgame2subchain',1=>'dgas2subchain');
+        $rel1=yield $this->getObject(InfoModel::class)
+            ->getDataByQuery('id,create_time,subchain,fromaddr',$tb[$type],['order_sn'=>$order]);
+        if($rel1){
+            $rel['create_time']=$rel1[0]['create_time'];
+            $rel['num']=$rel1[0]['subchain'];
+            $this->data=$rel;
+        }else
+            $this->resCode=1;
         $this->interOutputJson(200) ;
     }
 

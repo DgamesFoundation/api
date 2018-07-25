@@ -22,44 +22,6 @@ use App\Controllers\Common\BaseController;
 class Demo extends BaseController
 {
 
-    public function actionTest(){
-        //申请转子链
-        $subData=['dgas' => 11,
-            'amount'=> 22,
-            'faddress'=>'1111111111',
-            'taddress'=>'2222222222',
-            'out_trade_no'=>'33333333333333333',
-            'create_time'=>time(),
-            'update_time'=>time(),
-            'type'=>0];
-        $res=yield $this->getObject(SubchainModel::class)
-            ->SubRecharge($subData,'0x1111111111');
-        $this->output($res);
-    }
-
-
-    //子链详情
-    public function actionGetDetail(){
-        $id=$this->getContext()->getInput()->get('id');
-        $rel=yield $this->getObject(SubchainModel::class)
-            ->getDataByQuery_subLog('exchange_id,type',['id'=>$id]);
-        if(!$rel){
-            $this->data = $rel ? $rel[0] : null;
-            $this->interOutputJson(200) ;return;
-        }
-        $tb=array(0=>'dgame2subchain',1=>'dgas2subchain');
-        var_dump($rel);
-        $para_str="id,create_time,fromaddr,subchain";
-        if($tb[$rel[0]['type']]==0)
-            $para_str.=",txid";
-        $rel1=yield $this->getObject(InfoModel::class)
-            ->getDataByQuery($para_str,$tb[$rel[0]['type']],['id'=>$rel[0]['exchange_id']]);
-        var_dump($rel1);
-        $rel[0]['create_time']=$rel1[0]['create_time'];
-        $rel[0]['subchain']=$rel1[0]['subchain'];
-        $this->data = $rel ? $rel[0] : null;
-        $this->interOutputJson(200) ;
-    }
         /*====================================================================================================================================================================*/
     // 测试接口
     public function actionAuthcode()
