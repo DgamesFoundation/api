@@ -13,6 +13,7 @@ use App\Models\Wallet\InfoModel;
 use App\Models\Wallet\ApplicationModel;
 use App\Models\Wallet\FeeLogModel;
 use App\Models\Wallet\DgasModel;
+use App\Models\Wallet\SubchainModel;
 
 class Info extends BaseController
 {
@@ -51,7 +52,7 @@ class Info extends BaseController
     //获得兑换比例
     public function actionGetRatio(){
         $id=$this->getContext()->getInput()->get('id');
-        $sub=$this->getRedio($id);
+        $sub=$this->getObject(SubchainModel::class)->getRedio($id);
        $this->data= ['ratio'=>$sub,'dgas'=>getInstance()->config->get('dgas.ratio',100000),'dgame'=>getInstance()->config->get('dgame.ratio',100000)];
        $this->interOutputJson();
     }
