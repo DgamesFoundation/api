@@ -126,8 +126,10 @@ class Subchain extends BaseController
         $iv = strrev($key2);
         $reqstr = openssl_decrypt(base64_decode($code), 'aes-128-cbc', $key2, true, $iv);
         $para = json_decode($reqstr, true);
+
         /*====================  接受加密参数  =========================*/
         $this->log('dgame2subchain', [$code, $sign], '接收参数');
+        $this->log('dgame2subchain', [$para], '接收参数');
         $params = $this->checkParamsExists($para, ['appid', 'fromaddr', 'addr', 'toaddr', 'dgame', 'txid']);
         if (!$params) {
             $this->resCode = 1;
@@ -163,7 +165,7 @@ class Subchain extends BaseController
         if (!$consume_rel['status']) {
             yield $this->masterDb->goRollback($trans);
             $this->resCode = 1;
-            $this->resMsg = $consume_rel['mes'];
+            $this->resMsg = $consume_rel['msg'];
 //            $this->interOutputJson(403);return;
             var_dump("扣手续费lose");
             $this->encryptOutput($key2, $iv, 200);
@@ -194,6 +196,7 @@ class Subchain extends BaseController
         $this->encryptOutput($key2, $iv, 200);
 
     }
+
 
     /**生成dgame转subchain需要生成的订单
      * @param $para
