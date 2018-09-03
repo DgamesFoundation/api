@@ -130,7 +130,7 @@ class Subchain extends BaseController
         /*====================  接受加密参数  =========================*/
         $this->log('dgame2subchain', [$code, $sign], '接收参数');
         $this->log('dgame2subchain', [$para], '接收参数');
-        $params = $this->checkParamsExists($para, ['appid', 'fromaddr', 'addr', 'toaddr', 'dgame', 'txid']);
+        $params = $this->checkParamsExists($para, ['appid', 'fromaddr', 'addr', 'toaddr', 'dgame']);
         if (!$params) {
             $this->resCode = 1;
             $this->resMsg = "参数异常";
@@ -198,6 +198,135 @@ class Subchain extends BaseController
     }
 
 
+    public function actionAddDgameAccount_CallBack()
+    {
+        /*====================  接受加密参数 =========================*/
+        $code = $this->getContext()->getInput()->post('code'); // Encrypt userinfo
+        $sign = $this->getContext()->getInput()->post('sign'); // key1
+
+        $key2 = yield $this->checkKeycode($sign);
+        $iv = strrev($key2);
+        $reqstr = openssl_decrypt(base64_decode($code), 'aes-128-cbc', $key2, true, $iv);
+        $para = json_decode($reqstr, true);
+//        /*====================  接受加密参数  =========================*/
+//        $para = json_decode($this->getContext()->getInput()->getRawContent(), true);
+        $params = yield $this->checkParamsExists($para, ['txid', 'orderid']);
+        if (!$params) {
+            $this->resCode = 1;
+            $this->resMsg = "参数异常";
+            $this->encryptOutput(403);
+            return;
+        }
+        $data = ['txid' => $para['txid']];
+        $up = yield $this->getObject(SubchainModel::class)
+            ->UpDataByQuery_D2S($data, ['order_sn' => $para['orderid']]);
+        if ($up) {
+            $this->resStauts = "操作成功";
+        } else {
+            $this->resCode = 1;
+            $this->resStauts = "操作失败";
+        }
+//        $this->interOutputJson();
+        $this->encryptOutput($key2, $iv, 200);
+    }
+
+    /**子链充值（dgame）Dgame2subchain
+     * @return \Generator|void
+     */
+    public function actionAddDgameAccount1()
+    {
+//        /*====================  接受加密参数 =========================*/
+//        $code = $this->getContext()->getInput()->post('code'); // Encrypt userinfo
+//        $sign = $this->getContext()->getInput()->post('sign'); // key1
+//
+//        $key2 = yield $this->checkKeycode($sign);
+//        $iv = strrev($key2);
+//        $reqstr = openssl_decrypt(base64_decode($code), 'aes-128-cbc', $key2, true, $iv);
+//        $para = json_decode($reqstr, true);
+        $para = array(
+            'appid' => 'V431rSWOMpq3xGGJYSQTGH5oxlMBiXjJRw',
+            'fromaddr' => '0x13dcab7acae2d03ab7b02958b089fd2131515bb5',
+            'toaddr' => '0xf064b91a396bff8dac4848eccb20813b955b13fd',
+            'addr' => 'V75ie9xf00MJcMnvA2cX1GN1PpkT73K9Ag',
+            'dgame' => '1',
+            'type' => '2',
+        );
+
+//        $para = json_decode($reqstr, true);
+
+        /*====================  接受加密参数  =========================*/
+//        $this->log('dgame2subchain', [$code, $sign], '接收参数');
+//        $this->log('dgame2subchain', [$para], '接收参数');
+        $params = $this->checkParamsExists($para, ['appid', 'fromaddr', 'addr', 'toaddr', 'dgame']);
+        if (!$params) {
+            $this->resCode = 1;
+            $this->resMsg = "参数异常";
+//            $this->encryptOutput($key2, $iv, 403);
+            return;
+        }
+        /*=========================  参数异常   ===================================*/
+        $subRatio = yield $this->getObject(SubchainModel::class)
+            ->getRedio($para['appid']); //子链比例
+        $dgas = getInstance()->config->get('dgas.ratio', 100000);
+        $dgasMod = $this->getObject(DgasModel::class);
+        $pre_len = yield $this->getPrecisionsLen($para['appid']);
+        $para['subchain'] = $this->calc($para['dgame'], $dgas, 'mul', $pre_len);
+        $para['subchain'] = $this->calc($para['subchain'], $subRatio, 'mul', $pre_len);
+        //计算手续费
+        $sc_arr = ['appid' => strlen($para['appid']),
+            'fromaddr' => strlen($para['fromaddr']),
+            'address' => strlen($para['addr']),
+            'remark' => strlen(''),
+            'dgame' => strlen($para['dgame'])];
+        $charge = array_sum($sc_arr);
+        $sc_radio = getInstance()->config->get('ServerCharge', 0.0001);
+        $para['Scharge'] = $this->calc($charge, $sc_radio, 'mul', $pre_len);
+//        $para['Scharge']=bcmul($charge,$sc_radio, 5);
+        //事务开始
+        $trans = yield $this->masterDb->goBegin();
+        //扣手续费
+        $conArr = $para;
+        $conArr['fromaddr'] = $para['addr'];
+        $consume_rel = yield $dgasMod->consumeDgas_new($conArr, $trans, true);
+        $this->log('dgame2subchain', $consume_rel, '扣手续费');
+        if (!$consume_rel['status']) {
+            yield $this->masterDb->goRollback($trans);
+            $this->resCode = 1;
+            $this->resMsg = $consume_rel['msg'];
+//            $this->interOutputJson(403);return;
+            var_dump("扣手续费lose");
+            $this->interOutputJson();
+//            $this->encryptOutput($key2, $iv, 200);
+            return;
+        }
+        /*=========================  余额不足&扣费失败   ===================================*/
+        //插入订单
+        $result = yield $this->AddOrders_Dgame2Sub($para, $trans);
+        $this->log('dgame2subchain', $result, '插入订单');
+        if (!($result['d2s']['status'] && $result['d2d']['status'] && $result['sub']['status'])) {
+            yield $this->masterDb->goRollback($trans);
+            $this->resCode = 1;
+            $this->resMsg = '操作失败';
+            var_dump("操作失败");
+//            $this->encryptOutput($key2, $iv, 200);
+            $this->interOutputJson();
+            return;
+        }
+        /*=========================  插入订单失败   ===================================*/
+        //插入日志
+        $ids = ['sub' => $result['sub']['data']['id'],
+            'd2d' => $result['d2d']['data']['id'],
+            'd2s' => $result['d2s']['data']['id']];
+        yield $dgasMod->AddLog_Dgame2s($para, $ids);
+        yield $this->masterDb->goCommit($trans);
+//        //获得订单编号
+        $this->resMsg = '操作成功';
+        $this->data = ['order' => $result['sub']['data']['order']];
+//        $this->encryptOutput($key2, $iv, 200);
+        $this->interOutputJson();
+    }
+
+
     /**生成dgame转subchain需要生成的订单
      * @param $para
      * @param $trans
@@ -213,7 +342,7 @@ class Subchain extends BaseController
             'fromaddr' => $para['fromaddr'],
             'address' => $para['addr'],
             'toaddr' => $para['toaddr'],
-            'txid' => $para['txid'],
+//            'txid' => $para['txid'],
             'dgame' => $para['dgame'],
             'subchain' => $para['subchain'],
             'Scharge' => $para['Scharge'],
@@ -226,15 +355,16 @@ class Subchain extends BaseController
             'fromaddr' => $para['fromaddr'],
             'toaddr' => $para['addr'],
             'dgame' => $para['dgame'],
-            'txid' => $para['txid'],
+//            'txid' => $para['txid'],
             'address' => $para['addr'],
             'dgas' => $this->calc($para['dgame'], $dgas, 'mul', $pre_len),
             'ratio' => $dgas,
             'Scharge' => $para['Scharge'],
-            'order_sn' => $sub['data']['order']];
+            'order_sn' => $sub['data']['order'],
+            'status' => 1];
         $this->log('dgame2subchain', $d2dArr, 'd2dArr');
         $dgasMod = $this->getObject(DgasModel::class);
-        $d2d = yield $dgasMod->AddDgame2Dgas($d2dArr, $trans);
+        $d2d = yield $dgasMod->AddDgame2Dgas_D2S($d2dArr, $trans);
         //插入dgas2subchain
         $d2sArr = ['appid' => $para['appid'],
             'fromaddr' => $para['fromaddr'],

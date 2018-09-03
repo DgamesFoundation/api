@@ -43,6 +43,21 @@ class DgasModel extends BaseModel
         return $result['result'];
     }
 
+    public function getDataByQueryList($para, $query = '', $start = 0, $pageSize = 10)
+    {
+        $result = $this->masterDb->select($para)->from($this->log);
+        if ($query) {
+            foreach ($query as $k => $v) {
+                $result->where($k, $v);
+            }
+        }
+        $result->where('flag', 1, '!=');
+        $result->orderby('create_time', 'desc')
+            ->limit($pageSize, $start);
+        $result = yield $result->go();
+        return $result['result'];
+    }
+
     /**
      * 批量插入gas_log
      * @param $data
@@ -73,7 +88,8 @@ class DgasModel extends BaseModel
         var_dump('测试-------------------', $para);
         $isEnough = yield $this->getObject(InfoModel::class)
             ->balanceIsEnough(['appid' => $para['appid'], 'address' => $para['fromaddr']], $para['Scharge']);
-        var_dump($isEnough);
+        var_dump($isEnough, 'testtest');
+//        $this->log('dgame2subchain', $isEnough, '扣手续费');
         if (!$isEnough) {
             $this->log('dgas2subchain', [$para['Scharge'] + $para['dgas']], '余额不足');
             return ['status' => false, 'msg' => '余额不足'];
@@ -90,6 +106,7 @@ class DgasModel extends BaseModel
             $num = $isCharge ? $para['Scharge'] : $para['dgas'] + $para['Scharge'];
             $data = ['dgas' => [$num, '-'],
                 'fee' => [$para['Scharge'], '+']];
+            var_dump('dtas', $data);
             $query = ['appid' => $para['appid'],
                 'address' => $para['fromaddr']];
             $rel = yield $this->getObject(AccountModel::class)->UpDataByQuery($data, $query, $trans);
@@ -223,6 +240,42 @@ class DgasModel extends BaseModel
         $d2s = array_merge($data, $d2s);
         $res = yield  $this->masterDb->insert($this->dgas)->set($d2s)->go($trans);
         return $res['affected_rows'] > 0 ? ['status' => true, 'data' => ['order' => $orderId, 'id' => $res['insert_id']]] : ['status' => false];
+    }
+
+    /**
+     * Dgame2subchain订单
+     * @param $data
+     * @param $trans
+     * @return array
+     */
+    public function AddDgame2Dgas_D2S($data, $trans)
+    {
+        $orderId = isset($data['order_sn']) ? $data['order_sn'] : $this->guid();
+        $d2s = ['order_sn' => $orderId,
+            'create_time' => time(),
+            'update_time' => time()];
+        $d2s = array_merge($data, $d2s);
+        $res = yield  $this->masterDb->insert($this->dgas)->set($d2s)->go($trans);
+        return $res['affected_rows'] > 0 ? ['status' => true, 'data' => ['order' => $orderId, 'id' => $res['insert_id']]] : ['status' => false];
+    }
+
+    /**
+     * 根据条件更新数据
+     * @param $data
+     * @param string $query
+     * @param string $trans
+     * @return bool
+     */
+    public function UpDataByQuery_D2D($data, $query = '', $trans = '')
+    {
+        $result = yield $this->masterDb->update($this->dgas)->set($data);
+        if ($query) {
+            foreach ($query as $k => $v) {
+                $result->where($k, $v);
+            }
+        }
+        $result = yield $result->go($trans);
+        return $result['affected_rows'] > 0;
     }
 
 
