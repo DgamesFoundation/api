@@ -73,9 +73,10 @@ class Task extends BaseController
      * @throws \PG\MSF\Client\Exception
      */
     public function actionDame2dgas(){
+        $ehtapiHost = getInstance()->config->get("url.ethapi");
         while (true){
             $dgames2dgas = yield $this->masterDb->select("*")->from("dgame2dgas")->where("status",0)->go();
-            $ehtapiHost = getInstance()->config->get("url.ethapi");
+
             foreach ($dgames2dgas['result'] as $dr){
                 var_dump($dr);
                 $txid = $dr['txid'];
@@ -111,6 +112,7 @@ class Task extends BaseController
                     //$gas_log=yield $this->addGas_log_arr($gas_log,'');
                 }
             }
+            unset($dgames2dgas);
             echo "Sleep 5!!!!!\r\n";
             sleep(5);
         }
@@ -118,10 +120,10 @@ class Task extends BaseController
     }
 
     public function actionDame2subchain(){
+        $ehtapiHost = getInstance()->config->get("url.ethapi");
         while (true) {
             $dgames2dgas = yield $this->masterDb->select("*")->from("dgame2subchain")->where("status", 0)->go();
-            $ehtapiHost = getInstance()->config->get("url.ethapi");
-            var_dump($dgames2dgas);
+
             foreach ($dgames2dgas['result'] as $dr) {
                 $txid = $dr['txid'];
                 $client = $this->getObject(Client::class);
@@ -149,6 +151,7 @@ class Task extends BaseController
                     }
                 }
             }
+            unset($dgames2dgas);
             echo "sleep 5!!!!!\r\n";
             sleep(5);
         }
