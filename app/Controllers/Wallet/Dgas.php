@@ -76,12 +76,11 @@ class Dgas extends BaseController
         $this->log("dgame2dgas", $code, '接收未解密参数');
         $this->log("dgame2dgas", $sign, '接收未解密参数key');
         $this->log("dgame2dgas", $para, '接收参数');
-        if (!(isset($para['appid']) && isset($para['fromaddr']) && isset($para['addr']) && isset($para['dgame']))) {
+        $params = yield $this->checkParamsExists($para, ['appid', 'fromaddr', 'addr', 'dgame']);
+        if (!$params) {
             $this->resCode = 1;
             $this->resMsg = "参数异常";
-            /*=================日志BEGAIN===================*/
-            $this->log("dgame2dgas", [], '参数异常');
-            $this->encryptOutput($key2, $iv, 403);
+            $this->encryptOutput(403);
             return;
         }
         $dgas = getInstance()->config->get('dgas.ratio', 100000);

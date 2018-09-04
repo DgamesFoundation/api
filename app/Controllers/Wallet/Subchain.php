@@ -252,15 +252,23 @@ class Subchain extends BaseController
             'type' => '2',
         );
 
+//        $para = array(
+//            "appid" => "V431rSWOMpq3xGGJYSQTGH5oxlMBiXjJRw",
+//            "fromaddr" => "0x13dcab7acae2d03ab7b02958b089fd2131515bb5",
+//            "toaddr" => "0xf064b91a396bff8dac4848eccb20813b955b13fd",
+//            "subchain" => "1");
+
 //        $para = json_decode($reqstr, true);
 
         /*====================  接受加密参数  =========================*/
 //        $this->log('dgame2subchain', [$code, $sign], '接收参数');
 //        $this->log('dgame2subchain', [$para], '接收参数');
         $params = $this->checkParamsExists($para, ['appid', 'fromaddr', 'addr', 'toaddr', 'dgame']);
+//        $this->output($params);
         if (!$params) {
             $this->resCode = 1;
             $this->resMsg = "参数异常";
+            $this->interOutputJson();
 //            $this->encryptOutput($key2, $iv, 403);
             return;
         }
