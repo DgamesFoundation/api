@@ -1,1 +1,2 @@
 .idea
+/app/Console/Common/BaseController.php
