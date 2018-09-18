@@ -2,7 +2,7 @@
 
 $config['redis']['active'] = 'tw';
 /**
- * 本地环境
+ *  local environment
  */
 $config['redis']['tw']['ip'] = '127.0.0.1';
 $config['redis']['tw']['port'] = 22012;

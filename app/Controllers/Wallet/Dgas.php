@@ -17,15 +17,10 @@ use App\Models\Wallet\AccountModel;
 
 class Dgas extends BaseController
 {
-    public function actionReq()
-    {
-        $poa_header = $this->getContext()->getInput()->getHeader('poa');
-
-    }
 
     /**
-     *  显示dgas交易记录
-     * 参数：appid、address、page、pageSize
+     *  dgas transaction records
+     * Parameters：appid、address、page、pageSize
      */
     public function actionRechargeList()
     {
@@ -33,60 +28,43 @@ class Dgas extends BaseController
         $get = $this->getContext()->getInput()->getAllPostGet();
         if (!(isset($get['appid']) && isset($get['address']) && isset($get['page']) && isset($get['pageSize']))) {
             $this->resCode = 1;
-            $this->resMsg = "参数异常";
+            $this->resMsg = "Parameters of the abnormal";
             $this->interOutputJson(403);
         }
 
-        //日志
-        $this->log('gas_list', $get, '接收参数');
-        //设置分页
+        //Set the paging
         $size = $get['pageSize'] > 50 ? 50 : (int)$get['pageSize'];
         $size = $size < 0 ? 1 : $size;
         $get['page'] = $get['page'] < 0 ? 1 : $get['page'];
         $start = ($get['page'] - 1) * $size;
 
-        //获取gas列表
+        //get dgas list
         $gas_log = $this->getObject(DgasModel::class);
         $query = ['appid' => $get['appid'],
             'address' => $get['address']];
         $result = yield $gas_log->getDataByQueryList("type,exchange_id,flag,id", $query, $start, $size);
-        $this->log('gas_list', $result, '返回数据1');
         $result = yield $this->getListDtail($result, $get['appid']);
-        $this->log('gas_list', $result, '返回数据');
         $this->data = $result ? $result : null;
         $this->interOutputJson(200);
     }
 
     /**
-     * dgame充值dgas
+     * dgameToDgas
      */
     public function actionAddAccount()
     {
-        /*====================  接受加密参数 =========================*/
-        $code = $this->getContext()->getInput()->post('code'); // Encrypt userinfo
-        $sign = $this->getContext()->getInput()->post('sign'); // key1
-
-        $key2 = yield $this->checkKeycode($sign);
-        $iv = strrev($key2);
-        $reqstr = openssl_decrypt(base64_decode($code), 'aes-128-cbc', $key2, true, $iv);
-        $para = json_decode($reqstr, true);
-        /*====================  接受加密参数  =========================*/
-//        $para=json_decode($this->getContext()->getInput()->getRawContent(),true);
-        /*=================日志===================*/
-        $this->log("dgame2dgas", $code, '接收未解密参数');
-        $this->log("dgame2dgas", $sign, '接收未解密参数key');
-        $this->log("dgame2dgas", $para, '接收参数');
+        $para = json_decode($this->getContext()->getInput()->getRawContent(), true);
         $params = yield $this->checkParamsExists($para, ['appid', 'fromaddr', 'addr', 'dgame']);
         if (!$params) {
             $this->resCode = 1;
-            $this->resMsg = "参数异常";
+            $this->resMsg = "Parameters of the abnormal";
             $this->encryptOutput(403);
             return;
         }
-        $dgas = getInstance()->config->get('dgas.ratio', 100000);
-        $dgas = $para['dgame'] * $dgas;
+        $dgas_ratio = getInstance()->config->get('dgas.ratio', 100000);
+        $dgas = $para['dgame'] * $dgas_ratio;
 
-        //计算手续费
+        //deduct service charge
         $sc_arr = ['appid' => strlen($para['appid']),
             'fromaddr' => strlen($para['fromaddr']),
             'address' => strlen($para['addr']),
@@ -105,43 +83,33 @@ class Dgas extends BaseController
 //            'txid' => $para['txid'],
             'address' => $para['addr'],
             'dgas' => $dgas,
-            'ratio' => $dgas,
+            'ratio' => $dgas_ratio,
             'Scharge' => $charge,
             'order_sn' => $orderId,
             'status' => 0,
             'create_time' => time(),
             'update_time' => time()];
-        //生成dgas充值订单（dgame2dgas）
+        //create dgameToDgas Order
         $rel = yield $this->getObject(DgasModel::class)->InsertByData([$d2d]);
         if ($rel) {
             $this->resCode = 0;
-            $this->resMsg = '操作成功';
+            $this->resMsg = 'Successful operation';
             $this->data = ['order' => $orderId];
         } else {
             $this->resCode = 1;
-            $this->resMsg = '操作失败';
+            $this->resMsg = 'Operation failure';
         }
-        $this->log('dgame2dgas', $rel, '充值2状态');
 
-        $this->encryptOutput($key2, $iv, 200);
+        $this->interOutputJson(200);
     }
 
     public function actionAddAccount_CallBack()
     {
-        /*====================  接受加密参数 =========================*/
-        $code = $this->getContext()->getInput()->post('code'); // Encrypt userinfo
-        $sign = $this->getContext()->getInput()->post('sign'); // key1
-
-        $key2 = yield $this->checkKeycode($sign);
-        $iv = strrev($key2);
-        $reqstr = openssl_decrypt(base64_decode($code), 'aes-128-cbc', $key2, true, $iv);
-        $para = json_decode($reqstr, true);
-        /*====================  接受加密参数  =========================*/
-//        $para = json_decode($this->getContext()->getInput()->getRawContent(), true);
+        $para = json_decode($this->getContext()->getInput()->getRawContent(), true);
         $params = yield $this->checkParamsExists($para, ['txid', 'orderid']);
         if (!$params) {
             $this->resCode = 1;
-            $this->resMsg = "参数异常";
+            $this->resMsg = "Parameters of the abnormal";
             $this->encryptOutput(403);
             return;
         }
@@ -149,23 +117,21 @@ class Dgas extends BaseController
         $up = yield $this->getObject(DgasModel::class)
             ->UpDataByQuery_D2D($data, ['order_sn' => $para['orderid']]);
         if ($up) {
-            $this->resStauts = "操作成功";
+            $this->resStauts = "Successful operation";
         } else {
             $this->resCode = 1;
-            $this->resStauts = "操作失败";
+            $this->resStauts = "Operation failure";
         }
-//        $this->interOutputJson();
-        $this->encryptOutput($key2, $iv, 200);
+        $this->interOutputJson();
     }
 
     /**
-     * 根据gas——list数组列出列表详情
+     * dgas_log detail
      * @param $result
      * @return mixed
      */
     public function getListDtail($result, $appid)
     {
-        //获得记录详情
         $subchain = $this->getObject(SubchainModel::class);
         $info = $this->getObject(InfoModel::class);
         $pre_len = yield $this->getPrecisionsLen($appid);
@@ -174,7 +140,6 @@ class Dgas extends BaseController
             if ($v['type'] == 3 && $v['flag'] == 3) {
                 $rel = yield $subchain->getDataByQuery("appid,status,create_time,subchain,fromaddr,toaddr", ['id' => $v['exchange_id']]);
 
-                //计算手续费
                 $sc_para = ['appid' => strlen($rel[0]['appid']),
                     'fromaddr' => strlen($rel[0]['fromaddr']),
                     'toaddr' => strlen($rel[0]['toaddr']),
@@ -182,9 +147,7 @@ class Dgas extends BaseController
                     'num' => strlen($rel[0]['subchain'])];
                 $result[$k]['num'] = array_sum($sc_para);
                 $radio = getInstance()->config->get('ServerCharge', 0.0001);
-//                var_dump($radio);
                 $result[$k]['num'] = $this->calc($result[$k]['num'], $radio, 'mul', $pre_len);//$result[$k]['num']*$radio;
-//                $result[$k]['num']=$this->calc($result[$k]['num'],getInstance()->config->get('ServerCharge',0.0001),'mul');
 
                 $result[$k]['tran_type'] = 'DGAS';
                 $rel[0]['status'] = 1;
@@ -212,23 +175,18 @@ class Dgas extends BaseController
     }
 
     /**
-     * 根据记录的type和flag值选择相对应数据表
-     * @param $type 0：奖励，1：消耗，2：充值
-     * @param $flag 0：正常，1：dgame2suchain，2：充值手续，3：兑换手续
+     * Select the corresponding data table based on the recorded type and flag values
+     * @param $type 0：reward，1：consume，2：recharge
+     * @param $flag 0：normal，1：dgame2suchain，2：recharge charge，3：exchange charge
      * @return mixed
      */
     public function swichTB($type, $flag)
     {
-        $tb = array(1 => 'dgas2subchain', 2 => 'dgame2dgas');
-        if ($flag == 2)
-            return $tb[2];
-        if ($flag == 3)
-            return $tb[1];
-        return $tb[$type];
+        //todo:
     }
 
     /**
-     * 根据子链地址和子链合约标识地址获得dgas余额
+     * The dgas balance is obtained according to the subchain address and subchain contract identification address
      */
     public function actionGetGasBalance()
     {
@@ -236,7 +194,7 @@ class Dgas extends BaseController
         $params = $this->checkParamsExists($get, ['appid', 'address']);
         if (!$params) {
             $this->resCode = 1;
-            $this->resMsg = "参数异常";
+            $this->resMsg = "Parameters of the abnormal";
             $this->interOutputJson(403);
             return;
         }
@@ -247,7 +205,7 @@ class Dgas extends BaseController
         $this->interOutputJson(200);
     }
 
-    //获取dgas记录详情
+    //Get the details of the dgas log
     public function actionGetDetail()
     {
         $id = $this->getContext()->getInput()->get('id');

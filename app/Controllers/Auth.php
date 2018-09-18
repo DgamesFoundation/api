@@ -14,59 +14,7 @@ use App\Models\Demo as DemoModel;
 
 class Auth extends BaseController
 {
-    /**
-     *
-     */
-    public function actionCode()
-    {
-        /**
-         *
-        $header = $this->getContext()->getInput()->getHeader('poa');
-        $code = $this->getContext()->getInput()->get('code');
-        var_dump("code1:", $header, "code", $code);
-         //      $code = $this->getContext()->getInput()->post('code');
-         //var_dump("code2:",$code);
 
-        $res = ['code' => 0,
-            'msg' => '',
-            'status' => 'OK',
-            'data' => null];
-        $key2 = $this->genRandStr(16);
-        $privatekeyFile = getInstance()->config->get("resource.rsa_privatekey", "");
-        $rsaPrivateKey = file_get_contents($privatekeyFile);
-        openssl_private_encrypt($key2, $encrypted, $rsaPrivateKey);
-        $key2Encode = base64_encode($encrypted);
-
-        var_dump("urldecode", urldecode($code));
-        openssl_private_decrypt(base64_decode($code), $key1, $rsaPrivateKey);//私钥解密
-        */
-        // $res['data'] = $this->genKeycode();
-
-        $this->data = $this->genKeycode();
-        var_dump($this->data);
-        $this->interOutputJson(200);
-    }
-
-    public function actionGetok()
-    {
-        $code = $this->getContext()->getInput()->post('code');
-        $sign = $this->getContext()->getInput()->post('sign'); // key1
-        $key2 = 'o2EqBFpHxljAInpo';
-        $iv = strrev($key2);
-
-        $reqstr = openssl_decrypt(base64_decode($code), 'aes-128-cbc', $key2, true, $iv);
-        $reqobj = json_decode($reqstr);
-
-        $res = ['code' => 0,
-            'msg' => '',
-            'status' => 'OK',
-            'data' => null];
-
-        $jsonstr = json_encode($res);
-        $resstr = base64_encode(openssl_encrypt($jsonstr, 'aes-128-cbc', $key2, true, $iv));
-        var_dump("getok", $resstr);
-        $this->getContext()->getOutput()->output($resstr);
-    }
 
     public function actionGetMockIds()
     {

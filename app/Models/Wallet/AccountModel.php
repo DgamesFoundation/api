@@ -9,9 +9,10 @@
 namespace App\Models\Wallet;
 
 use App\Models\common\BaseModel;
-class AccountModel extends  BaseModel
+
+class AccountModel extends BaseModel
 {
-    public $table='account';
+    public $table = '**';
 
     public function __construct()
     {
@@ -19,38 +20,40 @@ class AccountModel extends  BaseModel
     }
 
     /**
-     * 查询
-     * @param $para 需要查询的字段
-     * @param $query 查询条件
+     * search
+     * @param $para
+     * @param $query
      * @return mixed
      */
-    public function getParaByData($para,$query){
-        $result=yield $this->masterDb->select($para)->from($this->table);
-        if($query){
-            foreach ($query as $k=>$v){
-                $result->where($k,$v);
+    public function getParaByData($para, $query)
+    {
+        $result = yield $this->masterDb->select($para)->from($this->table);
+        if ($query) {
+            foreach ($query as $k => $v) {
+                $result->where($k, $v);
             }
         }
-        $result=yield $result->go();
+        $result = yield $result->go();
         return $result['result'];
     }
 
     /**
-     * 根据条件更新数据
+     * Update data according to conditions
      * @param $data
      * @param string $query
      * @param string $trans
      * @return bool
      */
-    public function UpDataByQuery($data,$query='',$trans=''){
-        $result= yield $this->masterDb->update($this->table)->set($data);
-        if($query) {
+    public function UpDataByQuery($data, $query = '', $trans = '')
+    {
+        $result = yield $this->masterDb->update($this->table)->set($data);
+        if ($query) {
             foreach ($query as $k => $v) {
                 $result->where($k, $v);
             }
         }
-        $result=yield $result->go($trans);
-        var_dump('account',$result);
-        return $result['affected_rows']>0;
+        $result = yield $result->go($trans);
+        var_dump('account', $result);
+        return $result['affected_rows'] > 0;
     }
 }

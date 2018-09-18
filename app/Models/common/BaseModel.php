@@ -10,88 +10,88 @@ namespace App\Models\common;
 
 use PG\MSF\Models\Model;
 use PG\MSF\Coroutine\File;
+
 class BaseModel extends Model
 {
-    const DGAS_REWARD=0;
-    const DGAS_CONSUME=1;
-    const DGAS_RECHARGE=2;
-    const DGAS_CONSUME_SCHARGE=3;//兑换手续
-    const DGAS_RECHARGE_SCHARGE=2;//充值手续
-    const DGAS_NORMAL=0;//正常操作
-    const DGAS_S2S=4;
-    const DGAS_DGAME2S=1;
+    const DGAS_REWARD = 0;
+    const DGAS_CONSUME = 1;
+    const DGAS_RECHARGE = 2;
+    const DGAS_CONSUME_SCHARGE = 3;//exchange charge
+    const DGAS_RECHARGE_SCHARGE = 2;//exchange charge
+    const DGAS_NORMAL = 0;//normal operation
+    const DGAS_S2S = 4;
+    const DGAS_DGAME2S = 1;
 
-    const SUB_DGAME=0;
-    const SUB_DGAS=1;
-    const SUB_DGAME2SUB=2;
-    const TRANSFER=3;//转帐
+    const SUB_DGAME = 0;
+    const SUB_DGAS = 1;
+    const SUB_DGAME2SUB = 2;
+    const TRANSFER = 3;//transfer
 
-    const  DGAS2SUBCHAIN='dgas2subchain';
 
-    const  SUCCESS=1;
-    const  FAIL=0;
+    const  SUCCESS = 1;
+    const  FAIL = 0;
     public $masterDb;
     public $slaveDb;
+
     public function __construct()
     {
         parent::__construct();
-        $this->masterDb=$this->getMysqlPool('master');
+        $this->masterDb = $this->getMysqlPool('master');
     }
 
-    //生成uuid
-    public  function guid(){
-        if (function_exists('com_create_guid')){
+    //create uuid
+    public function guid()
+    {
+        if (function_exists('com_create_guid')) {
             return com_create_guid();
-        }else{
-            mt_srand((double)microtime()*10000);//optional for php 4.2.0 and up.
+        } else {
+            mt_srand((double)microtime() * 10000);//optional for php 4.2.0 and up.
             $charid = strtoupper(md5(uniqid(rand(), true)));
             $hyphen = chr(45);// "-"
-            $uuid = substr($charid, 0, 8).$hyphen
-                .substr($charid, 8, 4).$hyphen
-                .substr($charid,12, 4).$hyphen
-                .substr($charid,16, 4).$hyphen
-                .substr($charid,20,12);// "}"
+            $uuid = substr($charid, 0, 8) . $hyphen
+                . substr($charid, 8, 4) . $hyphen
+                . substr($charid, 12, 4) . $hyphen
+                . substr($charid, 16, 4) . $hyphen
+                . substr($charid, 20, 12);// "}"
             return $uuid;
         }
     }
 
 
-    public static function getSign($param, $code, $sign_type = 'MD5'){
-        //去除数组中的空值和签名参数(sign/sign_type)
+    public static function getSign($param, $code, $sign_type = 'MD5')
+    {
         $param = self::paramFilter($param);
-        //按键名升序排列数组
         $param = self::paramSort($param);
-        //把数组所有元素，按照“参数=参数值”的模式用“&”字符拼接成字符串
         $param_str = self::createLinkstring($param);
-        //把拼接后的字符串再与安全校验码直接连接起来
         $param_str = $param_str . $code;
-        //创建签名字符串
         return self::createSign($param_str, $sign_type);
     }
 
     /**
-     * 校验数据签名
+     * Check data signature
      *
-     * @param  string $sign  接口收到的签名
-     * @param  array  $param  签名数组
-     * @param  string $code      安全校验码
-     * @param  string $sign_type 签名类型
-     * @return boolean true正确，false失败
+     * @param  string $sign The signature received by the interface
+     * @param  array $param Signature array
+     * @param  string $code Safety check code
+     * @param  string $sign_type Signature type
+     * @return boolean true success，false fail
      */
-    public static function checkSign($sign, $param, $code, $sign_type = 'MD5'){
+    public static function checkSign($sign, $param, $code, $sign_type = 'MD5')
+    {
         return $sign == self::getSign($param, $code, $sign_type);
     }
 
     /**
-     * 去除数组中的空值和签名参数
+     * Remove empty values from the array
      *
-     * @param  array $param 签名数组
-     * @return array        去掉空值与签名参数后的新数组
+     * @param  array $param Signature array
+     * @return array
      */
-    private static function paramFilter($param){
+    private static function paramFilter($param)
+    {
         $param_filter = array();
         foreach ($param as $key => $val) {
-            if($key == 'sign' || $key == 'sign_type' || !strlen($val)){
+            if ($key == 'sign' || $key == 'sign_type' || !strlen($val)) {
                 continue;
             }
             $param_filter[$key] = $val;
@@ -100,114 +100,109 @@ class BaseModel extends Model
     }
 
     /**
-     * 按键名升序排列数组
+     * Key name ascending order array
      *
-     * @param  array $param 排序前的数组
-     * @return array        排序后的数组
+     * @param  array $param
+     * @return array
      */
-    private static function paramSort($param){
+    private static function paramSort($param)
+    {
         ksort($param);
         reset($param);
         return $param;
     }
 
     /**
-     * 把数组所有元素值，拼接成字符串
+     * Concatenate all the element values of the array into strings
      *
-     * @param  array $param 需要拼接的数组
-     * @return string       拼接完成以后的字符串
+     * @param  array $param An array that needs to be spliced
+     * @return string       The string after splicing is completed
      */
-    private static function createLinkstring($param){
+    private static function createLinkstring($param)
+    {
         $str = '';
         foreach ($param as $key => $val) {
-//            $str .= "{$key}={$val}&";
             $str .= $val;
         }
-        //去掉最后一个&字符
-//        $str = substr($str, 0, strlen($str) - 1);
-        //如果存在转义字符，那么去掉转义
-        if(get_magic_quotes_gpc()){
+        if (get_magic_quotes_gpc()) {
             $str = stripslashes($str);
         }
         return $str;
     }
 
     /**
-     * 创建签名字符串
+     * Create the signature string
      *
-     * @param  string $param 需要加密的字符串
-     * @param  string $type  签名类型 默认值：MD5
-     * @return string 签名结果
+     * @param  string $param Strings that need to be encrypted
+     * @param  string $type Signature type    defaults：MD5
+     * @return string
      */
-    private static function createSign($param, $type = 'MD5'){
+    private static function createSign($param, $type = 'MD5')
+    {
         $type = strtolower($type);
-        if($type == 'md5'){
+        if ($type == 'md5') {
             return md5($param);
         }
-//        if($type == 'dsa'){
-//            exit('DSA 签名方法待后续开发，请先使用MD5签名方式');
-//        }
-//        exit("接口暂不支持" . $type . "类型的签名方式");
     }
 
     /**
      *
-     * 计算大数
+     * Calculation of large number
      *
      * @param $m
      * @param $n
      * @param $x
      * @return mixed|string
      */
-    public  function calc($m,$n,$x,$precisions=8){
-        $errors=array(
-            '被除数不能为零',
-            '负数没有平方根'
+    public function calc($m, $n, $x, $precisions = 8)
+    {
+        $errors = array(
+            'The divisor cannot be zero',
+            'Negative Numbers have no square root'
         );
-        $m =  sprintf("%.".$precisions."f",$m);
-        $n =  sprintf("%.".$precisions."f",$n);
+        $m = sprintf("%." . $precisions . "f", $m);
+        $n = sprintf("%." . $precisions . "f", $n);
         bcscale($precisions);
-        switch($x){
+        switch ($x) {
             case 'add':
-                $t=bcadd($m,$n);
+                $t = bcadd($m, $n);
                 break;
             case 'sub':
-                $t=bcsub($m,$n);
+                $t = bcsub($m, $n);
                 break;
             case 'mul':
-                $t=bcmul($m,$n);
+                $t = bcmul($m, $n);
                 break;
             case 'div':
-                if($n!=0){
-                    $t=bcdiv($m,$n);
-                }else{
+                if ($n != 0) {
+                    $t = bcdiv($m, $n);
+                } else {
                     return $errors[0];
                 }
                 break;
             case 'pow':
-                $t=bcpow($m,$n);
+                $t = bcpow($m, $n);
                 break;
             case 'mod':
-                if($n!=0){
-                    $t=bcmod($m,$n);
-                }else{
+                if ($n != 0) {
+                    $t = bcmod($m, $n);
+                } else {
                     return $errors[0];
                 }
                 break;
             case 'sqrt':
-                if($m>=0){
-                    $t=bcsqrt($m);
-                }else{
+                if ($m >= 0) {
+                    $t = bcsqrt($m);
+                } else {
                     return $errors[1];
                 }
                 break;
         }
 //        $t=preg_replace("/\..*0+$/",'',$t);
-        $t=rtrim(rtrim($t, '0'), '.');
+        $t = rtrim(rtrim($t, '0'), '.');
         return $t;
 
     }
-
 
 
 }

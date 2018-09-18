@@ -7,21 +7,21 @@
  */
 
 // server服务进程标题前缀
-$config['server']['process_title'] = 'msf-demo';
+$config['server']['process_title'] = 'xxxx';
 // server服务运行时目录
 $config['server']['runtime_path']  = RUNTIME_DIR . '/';
 // server服务运行时pid目录
-$config['server']['pid_path']      = $config['server']['runtime_path'] . 'pids/';
+$config['server']['pid_path']      = $config['server']['runtime_path'] . '/';
 // 服务器配置
 $config['server']['set'] = [
     // swoole server的reactor数量
-    'reactor_num'              => 2,
+    'reactor_num'              => 0,
     // swoole server的worker数量
-    'worker_num'               => 1,
+    'worker_num'               => 0,
     // swoole server的task worker数量
-    'task_worker_num'          => 2,
+    'task_worker_num'          => 0,
     // swoole server的backlog队列长度
-    'backlog'                  => 128,
+    'backlog'                  => 0,
     // swoole server启用open_tcp_nodelay
     'open_tcp_nodelay'         => 1,
     // swoole server数据包分发策略

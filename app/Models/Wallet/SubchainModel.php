@@ -14,23 +14,23 @@ use App\Models\Wallet\ApplicationModel;
 
 class SubchainModel extends BaseModel
 {
-    private $s2s = 'subchain2subchain';
-    private $dgame2s = 'dgame2subchain';
-    private $dgas2s = 'dgas2subchain';
-    private $log = 'subchain_log';
+    private $s2s = '**';
+    private $dgame2s = '**';
+    private $dgas2s = '**';
+    private $log = '**';
 
     public function __construct()
     {
         parent::__construct();
     }
 
-    /*=============================================SUBCHAIN2SUBCHAIN===================================================================*/
+    /*=============================================SUBCHAINTOSUBCHAIN===================================================================*/
     /**
-     * 查询
-     * @param $para 需要获取的字段
-     * @param string $query 查询条件
-     * @param int $start limit 起始
-     * @param int $pageSize 每页显示条数
+     * search
+     * @param $para
+     * @param string $query
+     * @param int $start limit
+     * @param int $pageSize
      * @return mixed
      */
     public function getDataByQuery($para, $query = '', $start = 0, $pageSize = 10)
@@ -47,7 +47,7 @@ class SubchainModel extends BaseModel
         return $result['result'];
     }
 
-    /**插入数据subchain2subchain
+    /**Insert subchainTosubchain
      * @param $data
      * @return bool
      */
@@ -58,7 +58,7 @@ class SubchainModel extends BaseModel
     }
 
     /**
-     * 根据条件更新数据
+     * Update data according to conditions
      * @param $data
      * @param string $query
      * @param string $trans
@@ -75,8 +75,8 @@ class SubchainModel extends BaseModel
         $result = yield $result->go($trans);
         return $result['affected_rows'] > 0;
     }
-    /*====================================DGAS2SUBCHAIN==================================================================*/
-    /**插入数据Dgas2subchain
+    /*====================================DGASTOSUBCHAIN==================================================================*/
+    /**Insert DgasTosubchain
      * @param $data
      * @return bool
      */
@@ -87,7 +87,7 @@ class SubchainModel extends BaseModel
     }
 
     /**
-     * Dgas2subchain订单
+     * DgasTosubchain Order
      * @param $data
      * @param $trans
      * @return array
@@ -105,7 +105,7 @@ class SubchainModel extends BaseModel
         return $d2s_res ? ['status' => true, 'data' => $d2s_res] : ['status' => false];
     }
     /*=====================================SUBCHAIN_LOG============================================================================*/
-    /**插入数据 subchain_log
+    /**subchain log
      * @param $data
      * @return bool
      */
@@ -126,11 +126,11 @@ class SubchainModel extends BaseModel
     }
 
     /**
-     * 查询
-     * @param $para 需要获取的字段
-     * @param string $query 查询条件
-     * @param int $start limit 起始
-     * @param int $pageSize 每页显示条数
+     * search
+     * @param $para
+     * @param string $query
+     * @param int $start limit
+     * @param int $pageSize
      * @return mixed
      */
     public function getDataByQuery_subLog($para, $query = '', $start = 0, $pageSize = 10)
@@ -149,9 +149,9 @@ class SubchainModel extends BaseModel
         $result = yield $result->go();
         return $result['result'];
     }
-    /*======================================DGAME2SUBCHAIN=============================================================*/
+    /*======================================DGAMETOSUBCHAIN=============================================================*/
     /**
-     * Dgame2subchain订单
+     * Dgame2subchain order
      * @param $data
      * @param $trans
      * @return array
@@ -169,7 +169,7 @@ class SubchainModel extends BaseModel
     }
 
     /**
-     * 根据appid算出子链比例
+     * Calculate the subchain proportion according to appid
      * @param $appid
      * @return int
      */
@@ -179,7 +179,7 @@ class SubchainModel extends BaseModel
     }
 
     /**
-     *  订单生成后，发出充值子链请求
+     *
      * @param $para
      * @param $appid
      * @return mixed
@@ -187,19 +187,12 @@ class SubchainModel extends BaseModel
      */
     public function SubRecharge($para, $appid)
     {
-        $info = $this->getObject(ApplicationModel::class);
-        $rel = yield $info->getParaByAppid($appid, 'pay_callback_url,precisions');
-        $mul_len = getInstance()->config->get('dgas.mul_num', 1000000000000000000);
-        $para['dgas'] = $this->calc($para['dgas'], $mul_len, 'mul');
-        $para['amount'] = $this->calc($para['amount'], $rel[0]['precisions'], 'mul');
-        $client = $this->getObject(Client::class);
-        $result = yield $client->goSinglePost($rel[0]['pay_callback_url'], $para);
-        return $result['body'];
+        //todo:
     }
 
 
     /**
-     * 根据条件更新数据
+     * Update data according to conditions
      * @param $data
      * @param string $query
      * @param string $trans
@@ -220,14 +213,6 @@ class SubchainModel extends BaseModel
             ->set($data)
             ->where('order_sn', $query['order_sn'])
             ->go();
-//        var_dump($data['txid'], 'ttttt');
-//        if ($query) {
-//            foreach ($query as $k => $v) {
-//                $result->where($k, $v);
-//                $result2->where($k, $v);
-//                $result3->where($k, $v);
-//            }
-//        }
 
         return ($result['affected_rows'] > 0 && $result2['affected_rows'] > 0 && $result3['affected_rows'] > 0);
     }

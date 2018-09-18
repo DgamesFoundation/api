@@ -1,6 +1,6 @@
 <?php
 /**
- * 业务参数
+ * Business parameters
  *
  * @author camera360_server@camera360.com
  * @copyright Chengdu pinguo Technology Co.,Ltd.
